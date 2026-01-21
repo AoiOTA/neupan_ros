@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- 
+    =======================================================
+    Scout Mini 工业级精细标定 TF 参数 (最终修正版)
+    标定时间: 2025
+    标定方法: RViz 正交视图 (Orbit/TopDown) + 动态防重影测试
+    =======================================================
+    -->
+    
+    <!-- 
+    1. Base to Velodyne (定天)
+    参数顺序: x y z yaw pitch roll parent_frame child_frame
+    
+    [标定结果解析]
+    X = 0.150   : 修正动态旋转时的墙壁重影 (在 odom 视角下验证)
+    Y = 0.0     : 左右居中
+    Z = 0.554   : 修正点云高度，使其与虚拟地平面重合
+    Yaw = 0     : 默认正装
+    Pitch = -0.068 : 修正前后俯仰，解决点云翘起/下压
+    Roll  = 0.010  : 修正左右侧倾，解决左右点云高低不平
+    -->
+    <node pkg="tf2_ros" type="static_transform_publisher" name="base_to_velodyne"
+          args="0.15 0 0.554 0 -0.068 0.01 base_link velodyne" />
+    
+    <!-- 
+    2. Footprint to Base (定地)
+    修正 URDF 模型中轮轴中心与地面的物理高度差。
+    
+    [标定结果解析]
+    Z = 0.181   : 实测白色轮子模型底部刚好相切于地面网格线
+    -->
+    <node pkg="tf2_ros" type="static_transform_publisher" name="footprint_to_base"
+          args="0 0 0.181 0 0 0 base_footprint base_link" />
+    
+</launch>
