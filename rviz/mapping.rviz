@@ -1,0 +1,50 @@
+Panels:
+  - Class: rviz/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ""
+  Displays:
+    # 基础网格
+    - Class: rviz/Grid
+      Name: Grid
+      Reference Frame: <Fixed Frame>
+      Plane Cell Count: 100
+      Color: 160; 160; 160
+      
+    # 机器人模型 (新增)
+    # 作用: 验证 base_footprint -> base_link 的高度(0.181m)是否让轮子刚好切地
+    - Class: rviz/RobotModel
+      Name: Scout Mini Model
+      Robot Description: robot_description
+      
+    # 坐标系关系
+    - Class: rviz/TF
+      Name: TF Structure
+      Show Names: false   # 关闭名字显示，避免画面凌乱
+      Frame Timeout: 15
+      
+    # 2D 激光 (经过 Nodelet 高度过滤后的数据)
+    # 作用: 这是 Gmapping 真正“看到”的数据，必须重点关注
+    - Class: rviz/LaserScan
+      Name: Filtered 2D Scan
+      Topic: /scan
+      Size (m): 0.05
+      Color: 0; 255; 0    # 绿色高亮
+      
+    # SLAM 生成的栅格地图
+    - Class: rviz/Map
+      Name: Gmapping Map
+      Topic: /map
+      Color Scheme: map
+      
+    # 3D 原始点云 (用于对比参照)
+    # 作用: 检查是否有障碍物被高度过滤器误删，或地面是否被误判为障碍
+    - Class: rviz/PointCloud2
+      Name: Raw 3D Cloud
+      Topic: /velodyne_points
+      Size (m): 0.02
+      Color Transformer: Intensity # 根据反射强度着色
+      
+  Global Options:
+    Fixed Frame: map      # 建图模式下固定坐标系为 map
+    Frame Rate: 30
