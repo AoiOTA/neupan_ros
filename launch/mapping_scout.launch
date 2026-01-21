@@ -1,0 +1,131 @@
+<?xml version="1.0"?>
+<launch>
+    <!--
+    =================================================================
+    Scout Mini 工业级 SLAM 建图启动文件 (最终修正版)
+    集成: 
+      1. 底盘: Scout Mini (Can0, Odom发布 -> base_footprint)
+      2. 雷达: VLP-16 (Nodelet零拷贝架构, 仅输出 3D 点云)
+      3. 标定: 黄金参数 TF (Orbit+Odom双视角验证)
+      4. 算法: Gmapping (针对滑移转向优化的噪声模型)
+    =================================================================
+    -->
+    
+    <!-- ==================== 0. 全局参数 ==================== -->
+    <arg name="map_frame" default="map"/>
+    <arg name="odom_frame" default="odom"/>
+    <!-- 
+       [TF 修正] 建图算法通常跟踪 base_link 或 base_footprint。
+       这里使用 base_link，它已经通过 scout_tf.launch 正确连接到了 base_footprint。
+    -->
+    <arg name="base_frame" default="base_link"/>
+    
+    <!-- ==================== 1. 硬件驱动 (Hardware) ==================== -->
+    
+    <!-- 1.1 Scout Mini 底盘驱动 -->
+    <include file="$(find scout_bringup)/launch/scout_mini_robot_base.launch">
+        <!-- 显式声明车型 -->
+        <arg name="is_scout_mini" value="true"/>
+        <!-- 
+           开启 TF 发布 (odom -> base_footprint)
+           注意: 这里必须开启，并且确保驱动内部发布的是到 footprint 的变换
+        -->
+        <arg name="pub_tf" value="true"/>
+        <!-- [REP-105 关键] 强制指定基坐标系为 footprint -->
+        <arg name="base_frame" value="base_footprint"/>
+    </include>
+        
+    <!-- 1.2 Velodyne VLP-16 驱动 & Nodelet 管理器 -->
+    <include file="$(find velodyne_pointcloud)/launch/VLP16_points.launch">
+        <!-- 网络配置 -->
+        <arg name="device_ip" value="192.168.1.201"/>
+        <arg name="port" value="2368"/>
+        <!-- 坐标系名称 -->
+        <arg name="frame_id" value="velodyne"/>
+        <!-- 物理过滤 (仅过滤极近距离噪点，高度过滤交给后面的 nodelet) -->
+        <arg name="min_range" value="0.3"/>
+        <arg name="max_range" value="100.0"/>
+        
+        <!-- 
+           [系统优化] 
+           已在 VLP16_points.launch 内部禁用了官方的 2D 转换，
+           因此不需要再重映射垃圾话题 (/scan -> garbage)。
+           驱动现在只纯净地发布 /velodyne_points。
+        -->
+    </include>
+    
+    <!-- ==================== 2. TF 坐标变换 (黄金数据) ==================== -->
+    <!-- 
+       调用 scout_tf.launch 加载标定参数:
+       - Footprint Z = 0.181 (轮底切地)
+       - Lidar Z = 0.554, X = 0.15 (防重影, 点云压线)
+    -->
+    <include file="$(find neupan_ros)/launch/scout_tf.launch"/>
+    
+    <!-- ==================== 3. 感知处理 (Perception) ==================== -->
+    <!-- 
+       3D 点云转 2D 扫描 (Nodelet 高性能版)
+       功能: 将 3D 点云“压扁”成 2D 激光数据，供 Gmapping 使用。
+       参数: 传入 manager 名称，使其挂载到 VLP16 的进程中，实现零拷贝。
+    -->
+    <include file="$(find neupan_ros)/launch/velodyne_to_scan.launch">
+        <arg name="manager" value="velodyne_nodelet_manager"/>
+    </include>
+    
+    <!-- ==================== 4. SLAM (Gmapping 调优版) ==================== -->
+    <node pkg="gmapping" type="slam_gmapping" name="slam_gmapping" output="screen">
+        
+        <!-- 坐标系设置 -->
+        <param name="map_frame" value="$(arg map_frame)"/>
+        <param name="odom_frame" value="$(arg odom_frame)"/>
+        <param name="base_frame" value="$(arg base_frame)"/>
+        
+        <!-- 性能参数 -->
+        <param name="map_update_interval" value="3.0"/> <!-- 地图更新间隔，越小越耗 CPU -->
+        
+        <!-- 激光参数 -->
+        <param name="maxUrange" value="20.0"/> <!-- 激光雷达最大可用距离 (室内建议 10-20m) -->
+        <param name="maxRange" value="100.0"/> <!-- 传感器物理最大距离 -->
+        
+        <!-- 运动更新阈值 (动了多少才更新一次地图) -->
+        <param name="linearUpdate" value="0.2"/>    <!-- 移动 0.2米 更新一次 -->
+        <param name="angularUpdate" value="0.2"/>   <!-- 旋转 0.2弧度 更新一次 -->
+        <param name="temporalUpdate" value="3.0"/>  <!-- 如果不动，3秒强制更新一次 -->
+        
+        <!-- 粒子滤波参数 -->
+        <param name="particles" value="50"/>        <!-- 粒子数，建议 30-80 -->
+        <param name="xmin" value="-20.0"/>
+        <param name="ymin" value="-20.0"/>
+        <param name="xmax" value="20.0"/>
+        <param name="ymax" value="20.0"/>
+        <param name="delta" value="0.05"/>          <!-- 地图分辨率 (5cm) -->
+        
+        <!-- 
+           【滑移转向 (Skid-Steer) 专用噪声参数】
+           Scout Mini 转向时依靠轮子打滑，里程计的旋转分量非常不准。
+           必须显著增大 srr (旋转->旋转误差) 和 str (平移->旋转误差)。
+           如果建图时旋转导致地图重影/错乱，请继续加大 srr。
+        -->
+        <param name="srr" value="0.5"/> <!-- 旋转对旋转的误差 (原0.1, 建议0.3-0.5) -->
+        <param name="srt" value="0.2"/> <!-- 旋转对平移的误差 -->
+        <param name="str" value="0.3"/> <!-- 平移对旋转的误差 (原0.1, 建议0.2-0.3) -->
+        <param name="stt" value="0.2"/> <!-- 平移对平移的误差 -->
+        
+        <!-- 匹配得分增益 -->
+        <param name="ogain" value="3.0"/>
+        <param name="lstep" value="0.05"/>
+        <param name="astep" value="0.05"/>
+        <param name="iterations" value="5"/>
+        <param name="lsigma" value="0.075"/>
+        <param name="kernelSize" value="1"/>
+        <param name="lskip" value="0"/>
+        
+        <!-- 话题输入 -->
+        <remap from="scan" to="/scan"/>
+    </node>
+    
+    <!-- ==================== 5. Rviz 可视化 ==================== -->
+    <node pkg="rviz" type="rviz" name="rviz_mapping" 
+          args="-d $(find neupan_ros)/rviz/mapping.rviz" output="screen"/>
+    
+</launch>
