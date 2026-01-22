@@ -1,23 +1,27 @@
 <?xml version="1.0"?>
 <launch>
     <!-- 
-    Velodyne VLP-16 -> LaserScan (Nodelet 高性能版) - 工业级标定修正版
+    Velodyne VLP-16 -> LaserScan (Nodelet 高性能版) - 倾斜安装修正版
     
     架构说明:
     使用 Nodelet 技术，将 3D->2D 的转换逻辑作为插件加载到雷达驱动进程中。
     这实现了点云数据的 "零拷贝" (Zero-Copy) 传输，极大降低了 CPU 占用和延迟。
     
-    依赖:
-    必须先启动雷达驱动 (如 velodyne_driver_only.launch)，并确保管理器名称一致。
+    [关键修正]: 
+    针对物理倾斜安装的雷达，必须将 target_frame 设为水平坐标系 (base_link)，
+    否则生成的 2D 激光数据会随雷达一起倾斜，导致导航无法使用。
     -->
 
-    <!-- 参数: 目标坐标系 (保持为雷达自身坐标系，转换由 TF 树负责) -->
-    <arg name="target_frame" default="velodyne"/>
+    <!-- 
+      参数: 目标坐标系 (Target Frame)
+      [修改前]: default="velodyne" (导致 2D 数据随雷达倾斜)
+      [修改后]: default="base_link" (强制投影到车身水平坐标系)
+    -->
+    <arg name="target_frame" default="base_link"/>
 
     <!-- 
       参数: Nodelet 管理器名称
       必须与 velodyne_driver 启动的 manager 名称完全一致。
-      VLP16_points.launch 默认通常叫 "velodyne_nodelet_manager"。
     -->
     <arg name="manager" default="velodyne_nodelet_manager"/>
 
@@ -29,48 +33,46 @@
         <remap from="cloud_in" to="/velodyne_points"/>
         <remap from="scan" to="/scan"/>
 
-        <!-- 参数配置 (基于 Scout Mini 实测黄金数据 + VLP-16 Datasheet) -->
+        <!-- 参数配置 (基于 Scout Mini + 倾斜雷达实测数据) -->
         <rosparam subst_value="true">
-            # 目标坐标系
+            # 目标坐标系 (现在是 base_link)
             target_frame: $(arg target_frame)
             
             # 变换容差
             transform_tolerance: 0.01
 
             # ---------------------------------------------------------
-            # 高度过滤逻辑 (关键修改)
-            # 依据: Scout Mini 黄金标定数据
-            #   - base_link -> velodyne Z = 0.554m
-            #   - footprint -> base_link Z = 0.181m
-            #   - 雷达距地总高度 = 0.735m
+            # 高度过滤逻辑 (已根据 base_link 坐标系重算)
             # ---------------------------------------------------------
             
-            # min_height: -0.5
-            #   计算: 地面在 z = -0.735m。
-            #   设定 -0.5m 意味着截取雷达下方 0.5m 处的切片。
-            #   物理效果: 忽略地面 (留有约 23.5cm 的安全颠簸余量)，防止误把地面当障碍物。
-            min_height: -0.5
+            # min_height: 0.15
+            #   [计算逻辑]: 
+            #   - base_link 位于车轮轴心高度。
+            #   - 地面位于 base_link 下方约 0.18m (Z = -0.18)。
+            #   - 车头防撞杆/轮眉位于 base_link 平面附近 (Z ≈ 0)。
+            #   [设置效果]: 
+            #   - 设为 0.15m 意味着只截取车身中心上方 15cm 以上的数据。
+            #   - 完美过滤掉地面、地毯边缘、以及车头那个“绿色的拱起”。
+            min_height: 0.15
             
-            # max_height: 0.2
-            #   计算: 截取雷达水平面上方 0.2m 的数据。
-            #   物理效果: 结合 min_height，形成一个厚度为 0.7m 的腰部探测环。
-            max_height: 0.2
+            # max_height: 1.0
+            #   [计算逻辑]: 
+            #   - 截取 base_link 上方 1米内的数据。
+            #   - 忽略天花板和高处悬挂物，专注于导航层障碍物。
+            max_height: 1.0
 
             # ---------------------------------------------------------
-            # VLP-16 物理参数 (参考 Datasheet Page 2)
+            # VLP-16 物理参数 (保持不变)
             # ---------------------------------------------------------
             angle_min: -3.14159265359 # -180度
             angle_max: 3.14159265359  # +180度
             
-            # angle_increment: 0.005 (约 0.28度)
-            # Datasheet 标称分辨率 0.1°-0.4°。
-            # 0.005 是一个兼顾导航精度和 CPU 负载的推荐值。
-            angle_increment: 0.005  
+            angle_increment: 0.005    # 约 0.28度分辨率
             
-            scan_time: 0.1            # 10Hz (Datasheet: Rotation Rate 5-20Hz)
+            scan_time: 0.1            # 10Hz
             
-            range_min: 0.3            # 盲区过滤 (过滤车身遮挡及近场噪点)
-            range_max: 100.0          # 最大量程 (Datasheet: 100 m)
+            range_min: 0.3            # 近场盲区过滤 (保留以防漏网之鱼)
+            range_max: 100.0          # 最大量程
 
             # ---------------------------------------------------------
             # 杂项配置
