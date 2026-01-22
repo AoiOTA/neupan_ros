@@ -70,6 +70,8 @@
     -->
     <include file="$(find neupan_ros)/launch/velodyne_to_scan.launch">
         <arg name="manager" value="velodyne_nodelet_manager"/>
+         <!-- 强制指定投影到水平的车身坐标系 -->
+        <arg name="target_frame" value="base_link"/>
     </include>
     
     <!-- ==================== 4. SLAM (Gmapping 调优版) ==================== -->
