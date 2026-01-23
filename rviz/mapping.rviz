@@ -1,6 +1,12 @@
 Panels:
   - Class: rviz/Displays
     Name: Displays
+  - Class: rviz/Views      # <--- 加上这一段
+    Name: Views
+  - Class: rviz/Selection  # <--- 建议加上这一段，方便选点
+    Name: Selection
+  - Class: rviz/Tool Properties  # <--- 加上这一段，确保工具栏属性存在
+    Name: Tool Properties
 Visualization Manager:
   Class: ""
   Displays:
