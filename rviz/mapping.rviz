@@ -1,56 +1,137 @@
 Panels:
   - Class: rviz/Displays
+    Help Height: 78
     Name: Displays
-  - Class: rviz/Views      # <--- 加上这一段
-    Name: Views
-  - Class: rviz/Selection  # <--- 建议加上这一段，方便选点
+    Property Tree Widget:
+      Expanded:
+        - /Global Options1
+        - /Status1
+        - /Scout Mini Model1
+        - /TF Structure1
+        - /Filtered 2D Scan1
+        - /Gmapping Map1
+      Splitter Ratio: 0.5
+    Tree Height: 549
+  - Class: rviz/Selection
     Name: Selection
-  - Class: rviz/Tool Properties  # <--- 加上这一段，确保工具栏属性存在
+  - Class: rviz/Tool Properties
+    Expanded:
+      - /2D Pose Estimate1
+      - /2D Nav Goal1
+      - /Publish Point1
     Name: Tool Properties
+    Splitter Ratio: 0.5882353186607361
+  - Class: rviz/Views
+    Expanded:
+      - /Current View1
+    Name: Views
+    Splitter Ratio: 0.5
+  - Class: rviz/Time
+    Name: Time
+
 Visualization Manager:
   Class: ""
   Displays:
+    # ==============================
+    # 你的自定义配置区域 (保持不变)
+    # ==============================
     # 基础网格
     - Class: rviz/Grid
       Name: Grid
       Reference Frame: <Fixed Frame>
       Plane Cell Count: 100
       Color: 160; 160; 160
+      Alpha: 0.5
+      Line Style: Lines
+      Value: true
       
-    # 机器人模型 (新增)
-    # 作用: 验证 base_footprint -> base_link 的高度(0.181m)是否让轮子刚好切地
+    # 机器人模型
     - Class: rviz/RobotModel
       Name: Scout Mini Model
       Robot Description: robot_description
+      Update Interval: 0
+      Value: true
+      Visual Enabled: true
       
     # 坐标系关系
     - Class: rviz/TF
       Name: TF Structure
-      Show Names: false   # 关闭名字显示，避免画面凌乱
+      Show Names: false
       Frame Timeout: 15
+      Show Axes: true
+      Show Arrows: true
+      Value: true
       
-    # 2D 激光 (经过 Nodelet 高度过滤后的数据)
-    # 作用: 这是 Gmapping 真正“看到”的数据，必须重点关注
+    # 2D 激光 (Gmapping 数据源)
     - Class: rviz/LaserScan
       Name: Filtered 2D Scan
       Topic: /scan
       Size (m): 0.05
-      Color: 0; 255; 0    # 绿色高亮
+      Color: 0; 255; 0
+      Style: Flat Squares
+      Value: true
       
     # SLAM 生成的栅格地图
     - Class: rviz/Map
       Name: Gmapping Map
       Topic: /map
       Color Scheme: map
+      Value: true
       
-    # 3D 原始点云 (用于对比参照)
-    # 作用: 检查是否有障碍物被高度过滤器误删，或地面是否被误判为障碍
+    # 3D 原始点云
     - Class: rviz/PointCloud2
       Name: Raw 3D Cloud
       Topic: /velodyne_points
       Size (m): 0.02
-      Color Transformer: Intensity # 根据反射强度着色
-      
+      Color Transformer: Intensity
+      Style: Points
+      Value: true
+
+  # ==============================
+  # 关键修复: 这里定义了截图中的工具栏按钮
+  # ==============================
+  Tools:
+    - Class: rviz/Interact
+      Hide: false
+    - Class: rviz/MoveCamera
+    - Class: rviz/Select
+    - Class: rviz/FocusCamera
+    - Class: rviz/Measure
+    - Class: rviz/SetInitialPose
+      Topic: /initialpose
+    - Class: rviz/SetGoal
+      Topic: /move_base_simple/goal
+    - Class: rviz/PublishPoint
+      Single click: true
+      Topic: /clicked_point
+
   Global Options:
-    Fixed Frame: map      # 建图模式下固定坐标系为 map
+    Fixed Frame: map
     Frame Rate: 30
+    Background Color: 48; 48; 48
+
+# ==============================
+# 窗口布局: 强制显示工具栏
+# ==============================
+Window Geometry:
+  Displays:
+    collapsed: false
+  Height: 846
+  Hide Left Dock: false
+  Hide Right Dock: false
+  # 下面这个长字符串是标准的界面布局状态码
+  QMainWindow State: 000000ff00000000fd00000004000000000000016b000002a4fc0200000008fb0000001200530065006c0065006300740069006f006e0000000000ff000000ff0000000000000000fb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df0000000000000000fb0000000a00560069006500770073010000000000000306000000b00000000000000000fb000000120044006900730070006c00610079007301000000280000023a0000000000000000000000000100000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  Selection:
+    collapsed: false
+  Time:
+    collapsed: false
+  Tool Properties:
+    collapsed: false
+  Toolbars:
+    tool_bar:
+      auto_hide: false  # 关键设置: 禁止自动隐藏工具栏
+  Views:
+    collapsed: false
+  Width: 1600
+  X: 60
+  Y: 60
