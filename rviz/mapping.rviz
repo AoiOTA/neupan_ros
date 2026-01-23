@@ -1,6 +1,6 @@
 Panels:
   - Class: rviz/Displays
-    Help Height: 78
+    Help Height: 221
     Name: Displays
     Property Tree Widget:
       Expanded:
@@ -8,10 +8,11 @@ Panels:
         - /Status1
         - /Scout Mini Model1
         - /TF Structure1
+        - /TF Structure1/Frames1
         - /Filtered 2D Scan1
         - /Gmapping Map1
       Splitter Ratio: 0.5
-    Tree Height: 549
+    Tree Height: 982
   - Class: rviz/Selection
     Name: Selection
   - Class: rviz/Tool Properties
@@ -28,110 +29,275 @@ Panels:
     Splitter Ratio: 0.5
   - Class: rviz/Time
     Name: Time
-
+    SyncMode: 0
+    SyncSource: Raw 3D Cloud
+Preferences:
+  PromptSaveOnExit: true
+Toolbars:
+  toolButtonStyle: 2
 Visualization Manager:
   Class: ""
   Displays:
-    # ==============================
-    # 你的自定义配置区域 (保持不变)
-    # ==============================
-    # 基础网格
-    - Class: rviz/Grid
-      Name: Grid
-      Reference Frame: <Fixed Frame>
-      Plane Cell Count: 100
+    - Alpha: 0.5
+      Cell Size: 1
+      Class: rviz/Grid
       Color: 160; 160; 160
-      Alpha: 0.5
-      Line Style: Lines
+      Enabled: true
+      Line Style:
+        Line Width: 0.029999999329447746
+        Value: Lines
+      Name: Grid
+      Normal Cell Count: 0
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Plane: XY
+      Plane Cell Count: 100
+      Reference Frame: <Fixed Frame>
       Value: true
-      
-    # 机器人模型
-    - Class: rviz/RobotModel
+    - Alpha: 1
+      Class: rviz/RobotModel
+      Collision Enabled: false
+      Enabled: true
+      Links:
+        All Links Enabled: true
+        Expand Joint Details: false
+        Expand Link Details: false
+        Expand Tree: false
+        Link Tree Style: Links in Alphabetic Order
+        base_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        front_left_wheel_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        front_mount:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        front_right_wheel_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        inertial_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        rear_left_wheel_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        rear_mount:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        rear_right_wheel_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
       Name: Scout Mini Model
       Robot Description: robot_description
+      TF Prefix: ""
       Update Interval: 0
       Value: true
       Visual Enabled: true
-      
-    # 坐标系关系
     - Class: rviz/TF
-      Name: TF Structure
-      Show Names: false
+      Enabled: true
+      Filter (blacklist): ""
+      Filter (whitelist): ""
       Frame Timeout: 15
-      Show Axes: true
+      Frames:
+        All Enabled: false
+        base_footprint:
+          Value: true
+        base_link:
+          Value: true
+        front_left_wheel_link:
+          Value: false
+        front_mount:
+          Value: false
+        front_right_wheel_link:
+          Value: false
+        inertial_link:
+          Value: false
+        map:
+          Value: true
+        odom:
+          Value: true
+        rear_left_wheel_link:
+          Value: false
+        rear_mount:
+          Value: false
+        rear_right_wheel_link:
+          Value: false
+        velodyne:
+          Value: true
+      Marker Alpha: 1
+      Marker Scale: 1
+      Name: TF Structure
       Show Arrows: true
+      Show Axes: true
+      Show Names: true
+      Tree:
+        map:
+          odom:
+            base_footprint:
+              base_link:
+                front_left_wheel_link:
+                  {}
+                front_mount:
+                  {}
+                front_right_wheel_link:
+                  {}
+                inertial_link:
+                  {}
+                rear_left_wheel_link:
+                  {}
+                rear_mount:
+                  {}
+                rear_right_wheel_link:
+                  {}
+                velodyne:
+                  {}
+      Update Interval: 0
       Value: true
-      
-    # 2D 激光 (Gmapping 数据源)
-    - Class: rviz/LaserScan
-      Name: Filtered 2D Scan
-      Topic: /scan
-      Size (m): 0.05
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz/LaserScan
       Color: 0; 255; 0
+      Color Transformer: Intensity
+      Decay Time: 0
+      Enabled: true
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Min Color: 0; 0; 0
+      Name: Filtered 2D Scan
+      Position Transformer: XYZ
+      Queue Size: 10
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.05000000074505806
       Style: Flat Squares
+      Topic: /scan
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
       Value: true
-      
-    # SLAM 生成的栅格地图
-    - Class: rviz/Map
+    - Alpha: 0.699999988079071
+      Class: rviz/Map
+      Color Scheme: map
+      Draw Behind: false
+      Enabled: true
       Name: Gmapping Map
       Topic: /map
-      Color Scheme: map
+      Unreliable: false
+      Use Timestamp: false
       Value: true
-      
-    # 3D 原始点云
-    - Class: rviz/PointCloud2
-      Name: Raw 3D Cloud
-      Topic: /velodyne_points
-      Size (m): 0.02
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz/PointCloud2
+      Color: 255; 255; 255
       Color Transformer: Intensity
+      Decay Time: 0
+      Enabled: true
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Min Color: 0; 0; 0
+      Name: Raw 3D Cloud
+      Position Transformer: XYZ
+      Queue Size: 10
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.019999999552965164
       Style: Points
+      Topic: /velodyne_points
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
       Value: true
-
-  # ==============================
-  # 关键修复: 这里定义了截图中的工具栏按钮
-  # ==============================
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Default Light: true
+    Fixed Frame: map
+    Frame Rate: 30
+  Name: root
   Tools:
     - Class: rviz/Interact
-      Hide: false
+      Hide Inactive Objects: true
     - Class: rviz/MoveCamera
     - Class: rviz/Select
     - Class: rviz/FocusCamera
     - Class: rviz/Measure
     - Class: rviz/SetInitialPose
+      Theta std deviation: 0.2617993950843811
       Topic: /initialpose
+      X std deviation: 0.5
+      Y std deviation: 0.5
     - Class: rviz/SetGoal
       Topic: /move_base_simple/goal
     - Class: rviz/PublishPoint
       Single click: true
       Topic: /clicked_point
-
-  Global Options:
-    Fixed Frame: map
-    Frame Rate: 30
-    Background Color: 48; 48; 48
-
-# ==============================
-# 窗口布局: 强制显示工具栏
-# ==============================
+  Value: true
+  Views:
+    Current:
+      Class: rviz/Orbit
+      Distance: 12.976668357849121
+      Enable Stereo Rendering:
+        Stereo Eye Separation: 0.05999999865889549
+        Stereo Focal Distance: 1
+        Swap Stereo Eyes: false
+        Value: false
+      Field of View: 0.7853981852531433
+      Focal Point:
+        X: -1.6049702167510986
+        Y: 1.8113247156143188
+        Z: 0.627142071723938
+      Focal Shape Fixed Size: true
+      Focal Shape Size: 0.05000000074505806
+      Invert Z Axis: false
+      Name: Current View
+      Near Clip Distance: 0.009999999776482582
+      Pitch: 1.5697963237762451
+      Target Frame: <Fixed Frame>
+      Yaw: 3.1104063987731934
+    Saved: ~
 Window Geometry:
   Displays:
     collapsed: false
-  Height: 846
+  Height: 1449
   Hide Left Dock: false
   Hide Right Dock: false
-  # 下面这个长字符串是标准的界面布局状态码
-  QMainWindow State: 000000ff00000000fd00000004000000000000016b000002a4fc0200000008fb0000001200530065006c0065006300740069006f006e0000000000ff000000ff0000000000000000fb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df0000000000000000fb0000000a00560069006500770073010000000000000306000000b00000000000000000fb000000120044006900730070006c00610079007301000000280000023a0000000000000000000000000100000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd000000030000000000000244000004fafc0200000003fb000000100044006900730070006c0061007900730100000047000004fa000000f100fffffffb0000001200530065006c0065006300740069006f006e00000002ae000001160000006e00fffffffb0000001e0054006f006f006c002000500072006f00700065007200740069006500730000000354000001600000006e00ffffff0000000100000188000004fafc0200000001fb0000000a005600690065007700730100000047000004fa000000c200ffffff0000000300000a0000000040fc0100000001fb0000000800540069006d0065010000000000000a000000045a00ffffff00000626000004fa00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   Selection:
     collapsed: false
   Time:
     collapsed: false
   Tool Properties:
     collapsed: false
-  Toolbars:
-    tool_bar:
-      auto_hide: false  # 关键设置: 禁止自动隐藏工具栏
   Views:
     collapsed: false
-  Width: 1600
-  X: 60
-  Y: 60
+  Width: 2560
+  X: 0
+  Y: 34
