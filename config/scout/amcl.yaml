@@ -1,0 +1,61 @@
+# AMCL 配置 - 适配 Scout Mini 滑移转向
+
+# =========================================
+# 1. 滤波器参数
+# =========================================
+min_particles: 500
+max_particles: 3000
+kld_err: 0.05
+kld_z: 0.99
+recovery_alpha_slow: 0.001
+recovery_alpha_fast: 0.1
+
+# 更新频率
+update_min_d: 0.1             # 平移 0.1m 更新
+update_min_a: 0.15            # 旋转 ~8.5度 更新
+resample_interval: 1
+
+tf_broadcast: true
+transform_tolerance: 0.5
+gui_publish_rate: 10.0
+save_pose_rate: 0.5
+
+# =========================================
+# 2. 激光雷达模型
+# =========================================
+laser_model_type: likelihood_field
+laser_likelihood_max_dist: 2.0
+laser_max_beams: 100
+laser_z_hit: 0.9
+laser_z_rand: 0.1
+laser_min_range: -1.0
+laser_max_range: -1.0
+
+# =========================================
+# 3. 里程计模型 (重点)
+# =========================================
+odom_model_type: diff         # 差速模型
+
+# 滑移转向噪声参数 (调大以容忍打滑)
+odom_alpha1: 0.25             # 旋转->旋转 噪声
+odom_alpha2: 0.2              # 平移->旋转 噪声
+odom_alpha3: 0.2              # 平移->平移 噪声
+odom_alpha4: 0.2              # 旋转->平移 噪声
+odom_alpha5: 0.1
+
+# =========================================
+# 4. 坐标系与初始位姿
+# =========================================
+odom_frame_id: odom
+base_frame_id: base_link
+global_frame_id: map
+
+initial_pose_x: 0.0
+initial_pose_y: 0.0
+initial_pose_a: 0.0
+initial_cov_xx: 0.25
+initial_cov_yy: 0.25
+initial_cov_aa: 0.07
+
+use_map_topic: true
+first_map_only: false

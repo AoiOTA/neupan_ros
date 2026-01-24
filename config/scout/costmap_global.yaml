@@ -1,47 +1,55 @@
-# 独立全局代价地图配置
-# 用于 Standalone A* Planner
+# 独立全局代价地图配置 - [结构修正 & 极限瘦身版]
 
-global_costmap:
-  global_frame: map
-  robot_base_frame: base_link
+# [修正] 移除了顶层的 "global_costmap:" 缩进，直接从参数开始
+global_frame: map
+robot_base_frame: base_link
+
+update_frequency: 2.0
+publish_frequency: 1.0
+
+static_map: true
+rolling_window: false
+resolution: 0.05
+
+# [关键修正] 机器人半径 (瘦身)
+# Scout Mini 对角线约 0.43m。设为 0.30m 配合高衰减系数，允许通过窄门。
+# 安全余量由 NeuPAN 局部规划器负责。
+robot_radius: 0.30
+
+# 代价地图插件
+plugins:
+  - {name: static_layer, type: "costmap_2d::StaticLayer"}
+  - {name: obstacle_layer, type: "costmap_2d::ObstacleLayer"}
+  - {name: inflation_layer, type: "costmap_2d::InflationLayer"}
+
+# 静态层
+static_layer:
+  map_topic: /map
+  subscribe_to_updates: true
+
+# 障碍物层
+obstacle_layer:
+  observation_sources: scan
+  scan: 
+    topic: /scan
+    data_type: LaserScan
+    marking: true
+    clearing: true
+    max_obstacle_height: 2.0
+    min_obstacle_height: 0.0
+    obstacle_range: 3.0
+    raytrace_range: 4.0
+
+# 膨胀层 (核心避障逻辑)
+inflation_layer:
+  # [关键修正] 膨胀半径
+  # 必须 > robot_radius。设为 0.45m，紧贴车身，留出最大通行空间。
+  inflation_radius: 0.45
   
-  update_frequency: 2.0
-  publish_frequency: 1.0
-  
-  static_map: true
-  rolling_window: false
-  
-  # 分辨率 (应与建图一致)
-  resolution: 0.05
-  
-  # 机器人尺寸
-  robot_radius: 0.35  # Scout Mini 对角线/2 ≈ 0.42m，留余量
-  
-  # 代价地图插件
-  plugins:
-    - {name: static_layer, type: "costmap_2d:: StaticLayer"}
-    - {name: obstacle_layer, type: "costmap_2d::ObstacleLayer"}
-    - {name:  inflation_layer, type: "costmap_2d::InflationLayer"}
-  
-  # 静态层 (加载 map_server 发布的地图)
-  static_layer:
-    map_topic: /map
-    subscribe_to_updates: true
-  
-  # 障碍物层 (实时激光数据)
-  obstacle_layer:
-    observation_sources: scan
-    scan: 
-      topic: /scan
-      data_type: LaserScan
-      marking: true
-      clearing:  true
-      max_obstacle_height: 2.0
-      min_obstacle_height: 0.0
-      obstacle_range: 3.0
-      raytrace_range: 4.0
-  
-  # 膨胀层
-  inflation_layer:
-    inflation_radius: 0.65      # 机器人最大半径 + 安全余量
-    cost_scaling_factor: 3.0
+  # [关键修正] 衰减系数
+  # 设为 25.0 (极大值)，让代价像悬崖一样迅速衰减。
+  # 效果: 膨胀层变薄，避免堵死狭窄走廊。
+  cost_scaling_factor: 25.0
+
+# [关键修正] 增加 TF 等待时间，防止启动时因找不到 map->base_link 而失败
+transform_tolerance: 1.0

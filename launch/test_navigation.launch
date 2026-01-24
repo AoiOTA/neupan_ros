@@ -1,0 +1,66 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- 
+    ============================================================
+    Scout Mini 导航中间件独立测试 (AMCL + A* Only)
+    [稳定修复版]
+    ============================================================
+    -->
+    
+    <!-- 全局参数 -->
+    <arg name="map_file" default="$(env HOME)/maps/office.yaml"/>
+    <arg name="map_frame" default="map"/>
+    <arg name="odom_frame" default="odom"/>
+    <arg name="base_frame" default="base_link"/>
+    <arg name="lidar_frame" default="velodyne"/>
+
+    <!-- 1. 硬件驱动 -->
+    <include file="$(find scout_bringup)/launch/scout_mini_robot_base.launch">
+        <arg name="is_scout_mini" value="true"/>
+        <arg name="pub_tf" value="true"/>
+        <arg name="base_frame" value="base_footprint"/>
+    </include>
+    <include file="$(find velodyne_pointcloud)/launch/VLP16_points.launch">
+        <arg name="device_ip" value="192.168.1.201"/>
+        <arg name="frame_id" value="$(arg lidar_frame)"/>
+        <arg name="port" value="2368"/>
+        <arg name="min_range" value="0.3"/>
+        <arg name="max_range" value="100.0"/>
+    </include>
+    
+    <!-- 2. TF 与 感知 -->
+    <include file="$(find neupan_ros)/launch/scout_tf.launch"/>
+    <include file="$(find neupan_ros)/launch/velodyne_to_scan.launch">
+        <arg name="manager" value="velodyne_nodelet_manager"/>
+        <arg name="target_frame" value="base_link"/>
+    </include>
+
+    <!-- 3. 地图与定位 -->
+    <node pkg="map_server" type="map_server" name="map_server" args="$(arg map_file)">
+        <param name="frame_id" value="$(arg map_frame)"/>
+    </node>
+    <node pkg="amcl" type="amcl" name="amcl" output="screen">
+        <rosparam file="$(find neupan_ros)/config/scout/amcl.yaml" command="load"/>
+        <remap from="scan" to="/scan"/>
+        <param name="odom_frame_id" value="$(arg odom_frame)"/>
+        <param name="base_frame_id" value="$(arg base_frame)"/>
+        <param name="global_frame_id" value="$(arg map_frame)"/>
+    </node>
+
+    <!-- 4. 全局规划器 (A* Standalone) -->
+    <node pkg="global_planner" type="planner" name="global_planner" output="screen">
+        <rosparam file="$(find neupan_ros)/config/scout/planner_a_star.yaml" command="load" ns="planner"/>
+        <rosparam file="$(find neupan_ros)/config/scout/costmap_global.yaml" command="load" ns="costmap"/>
+        
+        <!-- 绝对路径重映射 -->
+        <remap from="/global_planner/goal" to="/move_base_simple/goal"/>
+        <remap from="/global_planner/planner/plan" to="/global_planner/plan"/>
+        
+        <param name="costmap/global_frame" value="$(arg map_frame)"/>
+        <param name="costmap/robot_base_frame" value="$(arg base_frame)"/>
+    </node>
+
+    <!-- 5. Rviz (手动配置模式) -->
+    <node pkg="rviz" type="rviz" name="rviz"/>
+
+</launch>
