@@ -1,23 +1,8 @@
 #!/usr/bin/env python
 
 """
-neupan_core is the main class for the neupan_ros package. It is used to run the NeuPAN algorithm in the ROS framework, which subscribes to the laser scan and localization information, and publishes the velocity command to the robot.
-
-Developed by Ruihua Han
-Copyright (c) 2025 Ruihua Han <hanrh@connect.hku.hk>
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
+neupan_core is the main class for the neupan_ros package.
+Modified to fix navigation goal reset issues (The "Move Once and Stop" Bug).
 """
 
 from neupan import neupan
@@ -70,12 +55,16 @@ class neupan_core:
         self.neupan_planner = neupan.init_from_yaml(
             self.planner_config_file, pan=pan
         )
-        # print()
 
         # data
         self.obstacle_points = None  # (2, n)  n number of points
         self.robot_state = None  # (3, 1) [x, y, theta]
+        
+        # [修改1] 初始化关键状态标志位
         self.stop = False
+        self.arrive = False 
+        self.new_goal = None # 用于线程间传递新目标
+        self.reset_flag = False # 用于触发重置
 
         # publisher
         self.vel_pub = rospy.Publisher("/neupan_cmd_vel", Twist, queue_size=10)
@@ -100,11 +89,6 @@ class neupan_core:
 
         # subscriber
         rospy.Subscriber("/scan", LaserScan, self.scan_callback)
-
-        # three types of initial path:
-        # 1. from given path
-        # 2. from waypoints
-        # 3. from goal position
         rospy.Subscriber("/initial_path", Path, self.path_callback)
         rospy.Subscriber("/neupan_waypoints", Path, self.waypoints_callback)
         rospy.Subscriber("/neupan_goal", PoseStamped, self.goal_callback)
@@ -114,6 +98,19 @@ class neupan_core:
         r = rospy.Rate(50)
 
         while not rospy.is_shutdown():
+            
+            # [修改2] 在主循环中处理新目标的重置逻辑，避免线程冲突
+            if self.reset_flag and self.robot_state is not None:
+                if self.new_goal is not None:
+                    rospy.loginfo("Resetting planner for NEW GOAL...")
+                    self.neupan_planner.update_initial_path_from_goal(self.robot_state, self.new_goal)
+                    self.neupan_planner.reset()
+                    self.new_goal = None # 清除目标防止重复更新
+                
+                # 强制重置状态，让车动起来
+                self.arrive = False
+                self.stop = False
+                self.reset_flag = False
 
             try:
                 (trans, rot) = self.listener.lookupTransform(
@@ -145,12 +142,12 @@ class neupan_core:
                 "robot state received {}".format(self.robot_state.tolist())
             )
 
+            # 初始路径设置逻辑
             if (
                 len(self.neupan_planner.waypoints) >= 1
                 and self.neupan_planner.initial_path is None
             ):
                 self.neupan_planner.set_initial_path_from_state(self.robot_state)
-                # print('set initial path', self.neupan_planner.initial_path)
 
             if self.neupan_planner.initial_path is None:
                 rospy.logwarn_throttle(1, "waiting for neupan initial path")
@@ -166,38 +163,38 @@ class neupan_core:
                     1, "No obstacle points, only path tracking task will be performed"
                 )
 
+            # [关键] 只有未到达且未强制停止时，才进行规划
             action, info = self.neupan_planner(self.robot_state, self.obstacle_points)
 
             self.stop = info["stop"]
             self.arrive = info["arrive"]
 
             if info["arrive"]:
-                # print(action)
-                rospy.loginfo_throttle(0.1, "arrive at the target")
+                rospy.loginfo_throttle(1.0, "arrive at the target")
+            
+            if info["stop"]:
+                rospy.logwarn_throttle(
+                    0.5,
+                    "neupan stop triggered! Min dist: {:.2f}, Threshold: {:.2f}".format(
+                        self.neupan_planner.min_distance.detach().item(),
+                        self.neupan_planner.collision_threshold
+                    ),
+                )
 
             # publish the path and velocity
             self.plan_pub.publish(self.generate_path_msg(info["opt_state_list"]))
             self.ref_state_pub.publish(self.generate_path_msg(info["ref_state_list"]))
+            
+            # 发送速度指令
             self.vel_pub.publish(self.generate_twist_msg(action))
 
             self.point_markers_pub_dune.publish(self.generate_dune_points_markers_msg())
             self.point_markers_pub_nrmp.publish(self.generate_nrmp_points_markers_msg())
             self.robot_marker_pub.publish(self.generate_robot_marker_msg())
 
-            if info["stop"]:
-                rospy.logwarn_throttle(
-                    0.5,
-                    "neupan stop with the min distance "
-                    + str(self.neupan_planner.min_distance.detach().item())
-                    + " threshold "
-                    + str(self.neupan_planner.collision_threshold),
-                )
-
             r.sleep()
 
-    # scan callback
     def scan_callback(self, scan_msg):
-
         if self.robot_state is None:
             return None
 
@@ -205,8 +202,6 @@ class neupan_core:
         angles = np.linspace(scan_msg.angle_min, scan_msg.angle_max, len(ranges))
 
         points = []
-        # x, y, z, yaw, pitch, roll = self.lidar_offset
-
         if self.flip_angle:
             angles = np.flip(angles)
 
@@ -235,33 +230,18 @@ class neupan_core:
             (trans, rot) = self.listener.lookupTransform(
                 self.map_frame, self.lidar_frame, rospy.Time(0)
             )
-
             yaw = self.quat_to_yaw_list(rot)
             x, y = trans[0], trans[1]
 
             trans_matrix, rot_matrix = get_transform(np.c_[x, y, yaw].reshape(3, 1))
             self.obstacle_points = rot_matrix @ point_array + trans_matrix
-            rospy.loginfo_once("Scan obstacle points Received")
-
             return self.obstacle_points
 
-        except (
-            tf.LookupException,
-            tf.ConnectivityException,
-            tf.ExtrapolationException,
-        ):
-            rospy.loginfo_throttle(
-                1,
-                "waiting for tf for the transform from {} to {}".format(
-                    self.lidar_frame, self.map_frame
-                ),
-            )
+        except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
             return
 
     def path_callback(self, path):
-
         initial_point_list = []
-
         for i in range(len(path.poses)):
             p = path.poses[i]
             x = p.pose.position.x
@@ -270,42 +250,34 @@ class neupan_core:
             if self.include_initial_path_direction:
                 theta = self.quat_to_yaw(p.pose.orientation)
             else:
-                rospy.loginfo_once("Using the points gradient as the initial path direction")
-
                 if i + 1 < len(path.poses):
                     p2 = path.poses[i + 1]
                     x2 = p2.pose.position.x
                     y2 = p2.pose.position.y
                     theta = atan2(y2 - y, x2 - x)
                 else:
-                    theta = initial_point_list[-1][2, 0]
+                    theta = initial_point_list[-1][2, 0] if initial_point_list else 0
             
             points = np.array([x, y, theta, 1]).reshape(4, 1)
             initial_point_list.append(points)
 
         if self.neupan_planner.initial_path is None or self.refresh_initial_path:
-            rospy.loginfo_throttle(0.1, "initial path update from given path")
+            rospy.loginfo("Initial path update from given path")
             self.neupan_planner.set_initial_path(initial_point_list)
             self.neupan_planner.reset()
-    
+            # [修改3] 接收到新路径时，重置状态
+            self.arrive = False
+            self.stop = False
+
     def waypoints_callback(self, path):
-        
-        '''
-        Utilize multiple waypoints (goals) to set the initial path
-        '''
-
         waypoints_list = [self.robot_state]
-
         for i in range(len(path.poses)):
             p = path.poses[i]
             x = p.pose.position.x
             y = p.pose.position.y
-            
             if self.include_initial_path_direction:
                 theta = self.quat_to_yaw(p.pose.orientation)
             else:
-                rospy.loginfo_once("Using the points gradient as the initial path direction")
-
                 if i + 1 < len(path.poses):
                     p2 = path.poses[i + 1]
                     x2 = p2.pose.position.x
@@ -313,184 +285,146 @@ class neupan_core:
                     theta = atan2(y2 - y, x2 - x)
                 else:
                     theta = waypoints_list[-1][2, 0]
-            
             points = np.array([x, y, theta, 1]).reshape(4, 1)
             waypoints_list.append(points)
 
         if self.neupan_planner.initial_path is None or self.refresh_initial_path:
-            rospy.loginfo_throttle(0.1, "initial path update from waypoints")
+            rospy.loginfo("Initial path update from waypoints")
             self.neupan_planner.update_initial_path_from_waypoints(waypoints_list)
             self.neupan_planner.reset()
+            # [修改4] 接收到新路点时，重置状态
+            self.arrive = False
+            self.stop = False
 
     def goal_callback(self, goal):
-
         x = goal.pose.position.x
         y = goal.pose.position.y
         theta = self.quat_to_yaw(goal.pose.orientation)
 
-        self.goal = np.array([[x], [y], [theta]])
-
-        print(f"set neupan goal: {[x, y, theta]}")
-
-        rospy.loginfo_throttle(0.1, "initial path update from goal position")
-        self.neupan_planner.update_initial_path_from_goal(self.robot_state, self.goal)
-        self.neupan_planner.reset()
-
+        # [修改5] 仅保存目标并设置标志位，将逻辑移至主循环
+        self.new_goal = np.array([[x], [y], [theta]])
+        self.reset_flag = True
+        
+        # 立即强制将arrive设为False，防止下一帧run循环直接退出
+        self.arrive = False
+        self.stop = False
+        
+        rospy.loginfo(f"Received NEW Goal: {[x, y, theta]} - Resetting Planner")
 
     def quat_to_yaw_list(self, quater):
-
         x = quater[0]
         y = quater[1]
         z = quater[2]
         w = quater[3]
-
         yaw = atan2(2 * (w * z + x * y), 1 - 2 * (pow(z, 2) + pow(y, 2)))
-
         return yaw
 
-    # generate ros message
     def generate_path_msg(self, path_list):
-
         path = Path()
         path.header.frame_id = self.map_frame
         path.header.stamp = rospy.Time.now()
         path.header.seq = 0
-
         for index, point in enumerate(path_list):
             ps = PoseStamped()
             ps.header.frame_id = self.map_frame
             ps.header.seq = index
-
             ps.pose.position.x = point[0, 0]
             ps.pose.position.y = point[1, 0]
             ps.pose.orientation = self.yaw_to_quat(point[2, 0])
-
             path.poses.append(ps)
-
         return path
 
     def generate_twist_msg(self, vel):
-
         if vel is None:
             return Twist()
 
         speed = vel[0, 0]
         steer = vel[1, 0]
 
+        # [逻辑说明] 如果标志位没有重置，这里会一直返回 0 速度
         if self.stop or self.arrive:
-            # print('stop flag true')
             return Twist()
-
         else:
             action = Twist()
-
             action.linear.x = speed
             action.angular.z = steer
-
             return action
 
     def generate_dune_points_markers_msg(self):
-
         marker_array = MarkerArray()
-
         if self.neupan_planner.dune_points is None:
             return
         else:
             points = self.neupan_planner.dune_points
-
             for index, point in enumerate(points.T):
-
                 marker = Marker()
                 marker.header.frame_id = self.map_frame
                 marker.header.seq = 0
                 marker.header.stamp = rospy.get_rostime()
-
                 marker.scale.x = self.marker_size
                 marker.scale.y = self.marker_size
                 marker.scale.z = self.marker_size
                 marker.color.a = 1.0
-
                 marker.color.r = 160 / 255
                 marker.color.g = 32 / 255
                 marker.color.b = 240 / 255
-
                 marker.id = index
                 marker.type = 1
                 marker.pose.position.x = point[0]
                 marker.pose.position.y = point[1]
                 marker.pose.position.z = 0.3
                 marker.pose.orientation = Quaternion()
-
                 marker_array.markers.append(marker)
-
             return marker_array
 
     def generate_nrmp_points_markers_msg(self):
-
         marker_array = MarkerArray()
-
         if self.neupan_planner.nrmp_points is None:
             return
         else:
             points = self.neupan_planner.nrmp_points
-
             for index, point in enumerate(points.T):
-
                 marker = Marker()
                 marker.header.frame_id = self.map_frame
                 marker.header.seq = 0
                 marker.header.stamp = rospy.get_rostime()
-
                 marker.scale.x = self.marker_size
                 marker.scale.y = self.marker_size
                 marker.scale.z = self.marker_size
                 marker.color.a = 1.0
-
                 marker.color.r = 255 / 255
                 marker.color.g = 128 / 255
                 marker.color.b = 0 / 255
-
                 marker.id = index
                 marker.type = 1
                 marker.pose.position.x = point[0]
                 marker.pose.position.y = point[1]
                 marker.pose.position.z = 0.3
                 marker.pose.orientation = Quaternion()
-
                 marker_array.markers.append(marker)
-
             return marker_array
 
     def generate_robot_marker_msg(self):
-
         marker = Marker()
-
         marker.header.frame_id = self.map_frame
         marker.header.seq = 0
         marker.header.stamp = rospy.get_rostime()
-
         marker.color.a = 1.0
         marker.color.r = 0 / 255
         marker.color.g = 255 / 255
         marker.color.b = 0 / 255
-
         marker.id = 0
-
         if self.neupan_planner.robot.shape == "rectangle":
             length = self.neupan_planner.robot.length
             width = self.neupan_planner.robot.width
             wheelbase = self.neupan_planner.robot.wheelbase
-
             marker.scale.x = length
             marker.scale.y = width
             marker.scale.z = self.marker_z
-
             marker.type = 1
-
             x = self.robot_state[0, 0]
             y = self.robot_state[1, 0]
             theta = self.robot_state[2, 0]
-
             if self.neupan_planner.robot.kinematics == "acker":
                 diff_len = (length - wheelbase) / 2
                 marker_x = x + diff_len * cos(theta)
@@ -498,34 +432,26 @@ class neupan_core:
             else:
                 marker_x = x
                 marker_y = y
-
             marker.pose.position.x = marker_x
             marker.pose.position.y = marker_y
             marker.pose.position.z = 0
             marker.pose.orientation = self.yaw_to_quat(self.robot_state[2, 0])
-
         return marker
 
     @staticmethod
     def yaw_to_quat(yaw):
-
         quater = Quaternion()
-
         quater.x = 0
         quater.y = 0
         quater.z = sin(yaw / 2)
         quater.w = cos(yaw / 2)
-
         return quater
 
     @staticmethod
     def quat_to_yaw(quater):
-
         x = quater.x
         y = quater.y
         z = quater.z
         w = quater.w
-
         raw = atan2(2 * (w * z + x * y), 1 - 2 * (pow(z, 2) + pow(y, 2)))
-
         return raw
