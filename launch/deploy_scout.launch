@@ -1,0 +1,147 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- 
+    ============================================================
+    Scout Mini + NeuPAN 完整部署 Launch 文件 (Final Version)
+    
+    [功能]: 
+      1. 启动硬件 (底盘+雷达)
+      2. 启动感知 (点云转2D LaserScan, Nodelet高性能版)
+      3. 启动定位 (AMCL)
+      4. 启动规划 (GlobalPlanner A*, 修复版)
+      5. 启动控制 (NeuPAN MPC/DUNE)
+      6. 启动可视化 (Rviz)
+    
+    [架构]: 
+      Rviz(2D Nav Goal) -> GlobalPlanner -> /global_planner/plan -> NeuPAN -> /cmd_vel -> Scout Base
+    ============================================================
+    -->
+    
+    <!-- ==================== 0. 全局参数 ==================== -->
+    <arg name="port_name" default="can0"/>
+    <arg name="map_file" default="$(env HOME)/maps/office.yaml"/>
+    <arg name="map_frame" default="map"/>
+    <arg name="odom_frame" default="odom"/>
+    <arg name="base_frame" default="base_link"/>
+    <arg name="lidar_frame" default="velodyne"/>
+    
+    <!-- NeuPAN 模型路径 -->
+    <arg name="neupan_config" default="$(find neupan_ros)/config/scout/neupan_planner_scout.yaml"/>
+    <!-- 请确保模型文件已存在，否则 NeuPAN 无法启动 -->
+    <arg name="dune_model" default="$(find neupan_ros)/model/custom/scout_dune.pth"/>
+
+    <!-- ==================== 1. 硬件驱动 ==================== -->
+    
+    <!-- 1.1 Scout Mini 底盘 -->
+    <include file="$(find scout_bringup)/launch/scout_mini_robot_base.launch">
+        <arg name="is_scout_mini" value="true"/>
+        <arg name="pub_tf" value="true"/>
+        <!-- 强制指定驱动层的基坐标系为 footprint (REP-105) -->
+        <arg name="base_frame" value="base_footprint"/>
+    </include>
+
+    <!-- 1.2 Velodyne VLP-16 雷达 -->
+    <include file="$(find velodyne_pointcloud)/launch/VLP16_points.launch">
+        <arg name="device_ip" value="192.168.1.201"/>
+        <arg name="frame_id" value="$(arg lidar_frame)"/>
+        <arg name="port" value="2368"/>
+        <!-- 物理过滤 -->
+        <arg name="min_range" value="0.3"/>
+        <arg name="max_range" value="100.0"/>
+        <!-- 驱动层保持纯净，不进行 scan 重映射 -->
+    </include>
+    
+    <!-- ==================== 2. TF 与 感知 ==================== -->
+    
+    <!-- 2.1 静态 TF 变换 -->
+    <include file="$(find neupan_ros)/launch/scout_tf.launch"/>
+    
+    <!-- 2.2 3D 点云转 2D 扫描 (关键步骤) -->
+    <include file="$(find neupan_ros)/launch/velodyne_to_scan.launch">
+        <arg name="manager" value="velodyne_nodelet_manager"/>
+        <!-- 
+           [继承配置 - 极重要] 
+           强制投影到 base_link 水平面，确保 AMCL 拿到的数据是水平的
+        -->
+        <arg name="target_frame" value="base_link"/>
+    </include>
+
+    <!-- ==================== 3. 地图与定位 ==================== -->
+    
+    <!-- 3.1 地图服务器 -->
+    <node pkg="map_server" type="map_server" name="map_server" args="$(arg map_file)">
+        <param name="frame_id" value="$(arg map_frame)"/>
+    </node>
+
+    <!-- 3.2 AMCL 定位 -->
+    <node pkg="amcl" type="amcl" name="amcl" output="screen">
+        <rosparam file="$(find neupan_ros)/config/scout/amcl.yaml" command="load"/>
+        <remap from="scan" to="/scan"/>
+        
+        <param name="odom_frame_id" value="$(arg odom_frame)"/>
+        <param name="base_frame_id" value="$(arg base_frame)"/>
+        <param name="global_frame_id" value="$(arg map_frame)"/>
+        
+        <!-- 初始位置假设 (默认在原点，启动后可用 Rviz 修正) -->
+        <param name="initial_pose_x" value="0.0"/>
+        <param name="initial_pose_y" value="0.0"/>
+        <param name="initial_pose_a" value="0.0"/>
+    </node>
+
+    <!-- ==================== 4. 全局规划器 (A* 修正版) ==================== -->
+    <node pkg="global_planner" type="planner" name="global_planner" output="screen">
+        <!-- 加载参数到正确命名空间 -->
+        <rosparam file="$(find neupan_ros)/config/scout/planner_a_star.yaml" command="load" ns="planner"/>
+        <rosparam file="$(find neupan_ros)/config/scout/costmap_global.yaml" command="load" ns="costmap"/>
+        
+        <!-- [关键] 绝对路径重映射，解决 Rviz 下发无效问题 -->
+        <remap from="/global_planner/goal" to="/move_base_simple/goal"/>
+        
+        <!-- 路径话题重映射 (供 NeuPAN 订阅) -->
+        <remap from="/global_planner/planner/plan" to="/global_planner/plan"/>
+        
+        <param name="costmap/global_frame" value="$(arg map_frame)"/>
+        <param name="costmap/robot_base_frame" value="$(arg base_frame)"/>
+    </node>
+
+    <!-- ==================== 6. NeuPAN 局部规划 (核心控制器) ==================== -->
+    <node name="neupan_node" pkg="neupan_ros" type="neupan_node.py" output="screen">
+        <!-- 配置加载 -->
+        <param name="config_file" value="$(arg neupan_config)"/>
+        <param name="dune_checkpoint" value="$(arg dune_model)"/>
+        
+        <!-- 坐标系 -->
+        <param name="map_frame" value="$(arg map_frame)"/>
+        <param name="base_frame" value="$(arg base_frame)"/>
+        <param name="lidar_frame" value="$(arg lidar_frame)"/>
+        
+        <!-- 雷达参数 -->
+        <param name="scan_range" value="0.4 10.0"/>
+        <param name="scan_angle_range" value="-3.14159 3.14159"/>
+        <param name="scan_downsample" value="4"/>
+        <param name="flip_angle" value="false"/>
+        
+        <!-- 行为逻辑 -->
+        <param name="refresh_initial_path" value="true"/>
+        <param name="include_initial_path_direction" value="false"/>
+        
+        <!-- 可视化参数 -->
+        <param name="marker_size" value="0.05"/>
+        <param name="marker_z" value="0.3"/>
+        
+        <!-- 话题对接 -->
+        <remap from="/scan" to="/scan"/>
+        <!-- [关键] 订阅 GlobalPlanner 生成的蓝线 -->
+        <remap from="/initial_path" to="/global_planner/plan"/>
+        <!-- [关键] 监听 Rviz 目标点 (用于触发重置) -->
+        <remap from="/neupan_goal" to="/move_base_simple/goal"/>
+        <!-- [关键] 直接控制底盘 -->
+        <remap from="/neupan_cmd_vel" to="/cmd_vel"/>
+    </node>
+
+    <!-- ==================== 7. 可视化 (Visualization) ==================== -->
+    <!-- 启动空配置 Rviz，方便手动加载之前保存的配置 (如 manual_test.rviz) -->
+    <!-- 如果想自动加载，请改为 args="-d $(find neupan_ros)/rviz/你的配置文件.rviz" -->
+    <node pkg="rviz" type="rviz" name="rviz"/>
+
+</launch>

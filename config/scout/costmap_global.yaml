@@ -44,7 +44,7 @@ obstacle_layer:
 inflation_layer:
   # [关键修正] 膨胀半径
   # 必须 > robot_radius。设为 0.45m，紧贴车身，留出最大通行空间。
-  inflation_radius: 0.45
+  inflation_radius: 0.35
   
   # [关键修正] 衰减系数
   # 设为 25.0 (极大值)，让代价像悬崖一样迅速衰减。

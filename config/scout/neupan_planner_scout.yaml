@@ -1,45 +1,68 @@
-# NeuPAN 规划器配置 - Scout Mini
-# 参考: neupan_ros/example/gazebo_limo/config/neupan_planner_limo.yaml
+# NeuPAN 规划器配置 - Scout Mini [实验室高精度版]
+# 优化目标: 平顺、稳定、贴边、防打滑
 
-# ==================== MPC 参数 ====================
-receding:  8                   # 预测步数 (Horizon)
-step_time: 0.15               # 时间步长 (秒)
-ref_speed: 0.5                # 期望巡航速度 (m/s) - 室内建议 0.3~0.6
-device:  'cpu'                 # 计算设备
-time_print: false             # 是否打印计算时间
-collision_threshold: 0.05     # 碰撞检测阈值 (米)
+# ==================== MPC 预测模型参数 ====================
+receding:  12                  # [优化] 预测步数 (原 10 -> 12)
+                               # 看得更远一点，可以提前规划更平滑的转弯动作。
+step_time: 0.2                 # 时间步长 (保持 0.2)
+                               
+ref_speed: 0.2                 # [优化] 期望巡航速度 (原 0.3 -> 0.2)
+                               # 0.2 m/s 是极慢的速度，大约是扫地机器人的速度。
+                               # 提供了充足的反应时间来处理复杂的桌腿障碍。
 
-# ==================== 机器人参数 ====================
+device:  'cpu'
+time_print: false
+collision_threshold: 0.03      # [优化] 碰撞检测阈值 (原 0.05 -> 0.03)
+                               # 减小阈值，意味着机器人更大胆，敢于离障碍物更近。
+
+# ==================== 机器人物理参数 (防打滑) ====================
 robot: 
-  kinematics:  'diff'          # 差速驱动
-  max_speed: [1.0, 2.0]       # [最大线速度, 最大角速度]
-  max_acce: [0.5, 1.0]        # [最大线加速度, 最大角加速度]
-  length: 0.65                # 包络长度 (含安全余量)
-  width: 0.60                 # 包络宽度 (含安全余量)
+  kinematics:  'diff'
+  
+  # 物理极限硬锁 (保持低速)
+  max_speed: [0.5, 1.0]
+  
+  # [核心优化] 大幅降低加速度，模拟“丝般顺滑”的起步
+  # 这是防止在光滑地面打滑、保护里程计精度的最有效手段！
+  max_acce: [0.3, 0.5]         # [最大线加速度, 最大角加速度]
+  
+  # 精确几何尺寸
+  length: 0.62                 
+  width: 0.59
 
-# ==================== 初始路径参数 ====================
+# ==================== 初始路径跟踪参数 ====================
 ipath:
-  interval: 0.1               # 路径点间隔 (米)
-  waypoints: [[0, 0, 0]]      # 初始航点 (将由 global_planner 覆盖)
-  curve_style: 'line'         # 曲线类型:  'line', 'dubins', 'reeds'
-  min_radius: 0.0             # 最小转弯半径
-  loop:  false                 # 是否循环路径
-  arrive_threshold: 0.3       # 到达阈值 (米)
-  close_threshold: 0.1        # 接近阈值 (米)
-  arrive_index_threshold: 0   # 到达索引阈值
+  interval: 0.1
+  waypoints: [[0, 0, 0]]
+  curve_style: 'line'
+  min_radius: 0.0
+  loop:  false
+  arrive_threshold: 0.1        # [优化] 到达目标的判定距离 (10cm)，停车更精准
+  close_threshold: 0.05
+  arrive_index_threshold: 0
 
 # ==================== PAN 网络参数 ====================
 pan: 
-  iter_num: 2                 # PAN 迭代次数
-  dune_max_num: 100           # DUNE 最大考虑点数
-  nrmp_max_num: 10            # NRMP 最大考虑点数
-  dune_checkpoint:  null       # 将由 launch 文件覆盖
-  iter_threshold: 0.1         # 迭代收敛阈值
+  iter_num: 3                  # [优化] 增加迭代次数，求解更精确
+  dune_max_num: 100
+  nrmp_max_num: 10
+  dune_checkpoint:  null
+  iter_threshold: 0.1
 
-# ==================== 调节参数 ====================
+# ==================== 权重调节参数 (核心调优) ====================
 adjust: 
-  q_s: 0.5                    # 路径追踪权重 (增大=更贴合全局路径)
-  p_u: 3.0                    # 速度保持权重 (增大=更平滑)
-  eta:  10.0                   # 约束软化参数
-  d_max: 0.5                  # 最大感知距离 (米)
-  d_min: 0.05                 # 最小安全距离 (米)
+  # [优化] 路径追踪权重 (Path Tracking)
+  # 设为 5.0 (极高)，强迫机器人像火车一样在轨道上跑，死死贴住蓝线。
+  # 适合走廊和窄门。
+  q_s: 5.0                    
+  
+  # [优化] 速度保持权重 (Speed Keeping)
+  # 设为 0.5 (较低)，允许机器人在需要时大幅减速，甚至停下来思考一下再走。
+  p_u: 0.5                    
+  
+  eta:  10.0
+  
+  # [优化] 感知范围
+  # 实验室环境障碍物近，设为 1.0 米足够，避免远处物体干扰。
+  d_max: 1.0                 
+  d_min: 0.05
