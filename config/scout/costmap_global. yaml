@@ -1,0 +1,47 @@
+# 独立全局代价地图配置
+# 用于 Standalone A* Planner
+
+global_costmap:
+  global_frame: map
+  robot_base_frame: base_link
+  
+  update_frequency: 2.0
+  publish_frequency: 1.0
+  
+  static_map: true
+  rolling_window: false
+  
+  # 分辨率 (应与建图一致)
+  resolution: 0.05
+  
+  # 机器人尺寸
+  robot_radius: 0.35  # Scout Mini 对角线/2 ≈ 0.42m，留余量
+  
+  # 代价地图插件
+  plugins:
+    - {name: static_layer, type: "costmap_2d:: StaticLayer"}
+    - {name: obstacle_layer, type: "costmap_2d::ObstacleLayer"}
+    - {name:  inflation_layer, type: "costmap_2d::InflationLayer"}
+  
+  # 静态层 (加载 map_server 发布的地图)
+  static_layer:
+    map_topic: /map
+    subscribe_to_updates: true
+  
+  # 障碍物层 (实时激光数据)
+  obstacle_layer:
+    observation_sources: scan
+    scan: 
+      topic: /scan
+      data_type: LaserScan
+      marking: true
+      clearing:  true
+      max_obstacle_height: 2.0
+      min_obstacle_height: 0.0
+      obstacle_range: 3.0
+      raytrace_range: 4.0
+  
+  # 膨胀层
+  inflation_layer:
+    inflation_radius: 0.65      # 机器人最大半径 + 安全余量
+    cost_scaling_factor: 3.0
