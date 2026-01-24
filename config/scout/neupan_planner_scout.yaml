@@ -33,7 +33,7 @@ robot:
 # ==================== 初始路径跟踪参数 ====================
 ipath:
   interval: 0.1
-  waypoints: [[0, 0, 0]]
+  # waypoints: [[0, 0, 0]]
   curve_style: 'line'
   min_radius: 0.0
   loop:  false
