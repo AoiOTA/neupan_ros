@@ -1,22 +1,22 @@
-# AMCL 配置 - 适配 Scout Mini 滑移转向
+# AMCL 配置 - 性能平衡版
 
 # =========================================
 # 1. 滤波器参数
 # =========================================
-min_particles: 500
-max_particles: 3000
+min_particles: 500            # 足够维持定位
+max_particles: 2000           # [修正] 5000 -> 2000。降低 CPU 负载，减少定位延迟。
 kld_err: 0.05
 kld_z: 0.99
 recovery_alpha_slow: 0.001
 recovery_alpha_fast: 0.1
 
 # 更新频率
-update_min_d: 0.1             # 平移 0.1m 更新
-update_min_a: 0.15            # 旋转 ~8.5度 更新
+update_min_d: 0.1
+update_min_a: 0.15
 resample_interval: 1
 
 tf_broadcast: true
-transform_tolerance: 0.5
+transform_tolerance: 1.0      # 保持较高的 TF 容忍度
 gui_publish_rate: 10.0
 save_pose_rate: 0.5
 
@@ -32,15 +32,15 @@ laser_min_range: -1.0
 laser_max_range: -1.0
 
 # =========================================
-# 3. 里程计模型 (重点)
+# 3. 里程计模型 (保持高噪声)
 # =========================================
-odom_model_type: diff         # 差速模型
+odom_model_type: diff
 
-# 滑移转向噪声参数 (调大以容忍打滑)
-odom_alpha1: 0.25             # 旋转->旋转 噪声
-odom_alpha2: 0.2              # 平移->旋转 噪声
-odom_alpha3: 0.2              # 平移->平移 噪声
-odom_alpha4: 0.2              # 旋转->平移 噪声
+# 滑移转向必须保持高噪声设置
+odom_alpha1: 0.25             # 旋转->旋转
+odom_alpha2: 0.25             # 平移->旋转
+odom_alpha3: 0.2              # 平移->平移
+odom_alpha4: 0.2              # 旋转->平移
 odom_alpha5: 0.1
 
 # =========================================

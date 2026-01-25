@@ -1,6 +1,6 @@
-# 独立全局代价地图配置 - [结构修正 & 极限瘦身版]
+# 独立全局代价地图配置 - [安全优化版]
 
-# [修正] 移除了顶层的 "global_costmap:" 缩进，直接从参数开始
+# [重要] 不要包含 "global_costmap:" 顶层缩进
 global_frame: map
 robot_base_frame: base_link
 
@@ -11,9 +11,7 @@ static_map: true
 rolling_window: false
 resolution: 0.05
 
-# [关键修正] 机器人半径 (瘦身)
-# Scout Mini 对角线约 0.43m。设为 0.30m 配合高衰减系数，允许通过窄门。
-# 安全余量由 NeuPAN 局部规划器负责。
+# 机器人半径 (瘦身以过窄门)
 robot_radius: 0.30
 
 # 代价地图插件
@@ -40,16 +38,13 @@ obstacle_layer:
     obstacle_range: 3.0
     raytrace_range: 4.0
 
-# 膨胀层 (核心避障逻辑)
+# 膨胀层
 inflation_layer:
-  # [关键修正] 膨胀半径
-  # 必须 > robot_radius。设为 0.45m，紧贴车身，留出最大通行空间。
-  inflation_radius: 0.35
+  # [修正] 增大膨胀半径 (0.35 -> 0.45)
+  # 必须比 robot_radius 大出至少 15cm，防止控制微小震荡触发急停。
+  inflation_radius: 0.45
   
-  # [关键修正] 衰减系数
-  # 设为 25.0 (极大值)，让代价像悬崖一样迅速衰减。
-  # 效果: 膨胀层变薄，避免堵死狭窄走廊。
+  # 衰减系数 (保持陡峭)
   cost_scaling_factor: 25.0
 
-# [关键修正] 增加 TF 等待时间，防止启动时因找不到 map->base_link 而失败
 transform_tolerance: 1.0
