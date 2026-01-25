@@ -19,7 +19,7 @@
     
     <!-- ==================== 0. 全局参数 ==================== -->
     <arg name="port_name" default="can0"/>
-    <arg name="map_file" default="$(env HOME)/maps/office.yaml"/>
+    <arg name="map_file" default="$(env HOME)/maps/office/office.yaml"/>
     <arg name="map_frame" default="map"/>
     <arg name="odom_frame" default="odom"/>
     <arg name="base_frame" default="base_link"/>
@@ -142,6 +142,7 @@
     <!-- ==================== 7. 可视化 (Visualization) ==================== -->
     <!-- 启动空配置 Rviz，方便手动加载之前保存的配置 (如 manual_test.rviz) -->
     <!-- 如果想自动加载，请改为 args="-d $(find neupan_ros)/rviz/你的配置文件.rviz" -->
-    <node pkg="rviz" type="rviz" name="rviz"/>
+    <node pkg="rviz" type="rviz" name="rviz_navigation"
+            args="-d $(find neupan_ros)/rviz/navigation.rviz" output="screen"/>
 
 </launch>

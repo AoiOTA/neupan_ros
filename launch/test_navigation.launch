@@ -8,7 +8,7 @@
     -->
     
     <!-- 全局参数 -->
-    <arg name="map_file" default="$(env HOME)/maps/office.yaml"/>
+    <arg name="map_file" default="$(env HOME)/maps/office/office.yaml"/>
     <arg name="map_frame" default="map"/>
     <arg name="odom_frame" default="odom"/>
     <arg name="base_frame" default="base_link"/>
