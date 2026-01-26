@@ -134,7 +134,7 @@
         <!-- [关键] 订阅 GlobalPlanner 生成的蓝线 -->
         <remap from="/initial_path" to="/global_planner/plan"/>
         <!-- [关键] 监听 Rviz 目标点 (用于触发重置) -->
-        <remap from="/neupan_goal" to="/move_base_simple/goal"/>
+        <!-- <remap from="/neupan_goal" to="/move_base_simple/goal"/> -->
         <!-- [关键] 直接控制底盘 -->
         <remap from="/neupan_cmd_vel" to="/cmd_vel"/>
     </node>
