@@ -2,7 +2,7 @@
 
 """
 neupan_core is the main class for the neupan_ros package.
-Modified to fix navigation goal reset issues (The "Move Once and Stop" Bug).
+Modified to include Real-Time Frequency Monitoring.
 """
 
 from neupan import neupan
@@ -60,7 +60,7 @@ class neupan_core:
         self.obstacle_points = None  # (2, n)  n number of points
         self.robot_state = None  # (3, 1) [x, y, theta]
         
-        # [修改1] 初始化关键状态标志位
+        # 初始化关键状态标志位
         self.stop = False
         self.arrive = False 
         self.new_goal = None # 用于线程间传递新目标
@@ -95,11 +95,15 @@ class neupan_core:
         
     def run(self):
 
-        r = rospy.Rate(50)
+        r = rospy.Rate(50) # 设定目标频率为 50Hz
+
+        # [新增] 频率统计相关变量
+        last_freq_time = rospy.Time.now()
+        loop_count = 0
 
         while not rospy.is_shutdown():
             
-            # [修改2] 在主循环中处理新目标的重置逻辑，避免线程冲突
+            # 在主循环中处理新目标的重置逻辑，避免线程冲突
             if self.reset_flag and self.robot_state is not None:
                 if self.new_goal is not None:
                     rospy.loginfo("Resetting planner for NEW GOAL...")
@@ -192,7 +196,24 @@ class neupan_core:
             self.point_markers_pub_nrmp.publish(self.generate_nrmp_points_markers_msg())
             self.robot_marker_pub.publish(self.generate_robot_marker_msg())
 
+            # 维持循环频率
             r.sleep()
+
+            # [新增] 计算并打印实际频率 (每隔1秒打印一次)
+            loop_count += 1
+            now = rospy.Time.now()
+            dt = (now - last_freq_time).to_sec()
+            
+            if dt >= 1.0:
+                actual_freq = loop_count / dt
+                rospy.loginfo(f"Neupan Control Loop Frequency: {actual_freq:.2f} Hz")
+                
+                # 如果频率严重不足 (例如低于 40Hz)，打印警告
+                if actual_freq < 40.0:
+                    rospy.logwarn(f"Loop running SLOW! Target: 50Hz, Actual: {actual_freq:.2f} Hz. Check CPU load.")
+                
+                last_freq_time = now
+                loop_count = 0
 
     def scan_callback(self, scan_msg):
         if self.robot_state is None:
@@ -265,7 +286,7 @@ class neupan_core:
             rospy.loginfo("Initial path update from given path")
             self.neupan_planner.set_initial_path(initial_point_list)
             self.neupan_planner.reset()
-            # [修改3] 接收到新路径时，重置状态
+            # 接收到新路径时，重置状态
             self.arrive = False
             self.stop = False
 
@@ -292,7 +313,7 @@ class neupan_core:
             rospy.loginfo("Initial path update from waypoints")
             self.neupan_planner.update_initial_path_from_waypoints(waypoints_list)
             self.neupan_planner.reset()
-            # [修改4] 接收到新路点时，重置状态
+            # 接收到新路点时，重置状态
             self.arrive = False
             self.stop = False
 
@@ -301,7 +322,7 @@ class neupan_core:
         y = goal.pose.position.y
         theta = self.quat_to_yaw(goal.pose.orientation)
 
-        # [修改5] 仅保存目标并设置标志位，将逻辑移至主循环
+        # 仅保存目标并设置标志位，将逻辑移至主循环
         self.new_goal = np.array([[x], [y], [theta]])
         self.reset_flag = True
         
@@ -341,7 +362,7 @@ class neupan_core:
         speed = vel[0, 0]
         steer = vel[1, 0]
 
-        # [逻辑说明] 如果标志位没有重置，这里会一直返回 0 速度
+        # 如果标志位没有重置，这里会一直返回 0 速度
         if self.stop or self.arrive:
             return Twist()
         else:
