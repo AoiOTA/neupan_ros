@@ -38,9 +38,9 @@ obstacle_layer:
 # 膨胀层
 inflation_layer:
   # 保持较大的膨胀半径，迫使绿线弯曲
-  inflation_radius: 0.55
+  inflation_radius: 0.50
   
   # 衰减系数
-  cost_scaling_factor: 10.0
+  cost_scaling_factor: 2.5
 
 transform_tolerance: 1.0
