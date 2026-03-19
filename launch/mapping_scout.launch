@@ -32,7 +32,7 @@
         -->
         <arg name="pub_tf" value="true"/>
         <!-- [REP-105 关键] 强制指定基坐标系为 footprint -->
-        <arg name="base_frame" value="base_footprint"/>
+        <arg name="base_frame" default="base_footprint" />
     </include>
         
     <!-- 1.2 Velodyne VLP-16 驱动 & Nodelet 管理器 -->

@@ -5,7 +5,7 @@
 # =========================================
 use_dijkstra: false
 use_quadratic: true
-use_grid_path: true
+use_grid_path: false
 old_navfn_behavior: false
 
 # =========================================
@@ -16,12 +16,12 @@ old_navfn_behavior: false
 # 作用：告诉 A* 算法，"踩到高代价区域"是非常严重的。
 # 这会迫使算法宁愿绕远路（走中间），也不愿走近路（贴墙）。
 # 如果发现还是不够居中，可以继续加到 5.0 或 8.0。
-cost_factor: 12
+cost_factor: 50
 
 # [稍微降低] 中性代价 (距离惩罚)
 # 66 -> 50
 # 作用：降低"路程长度"在总分里的占比，让算法不再为了省那一点距离而贴墙切内弯。
-neutral_cost: 1
+neutral_cost: 66
 
 # 致命代价
 lethal_cost: 253

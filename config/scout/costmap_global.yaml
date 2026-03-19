@@ -1,46 +1,46 @@
-# 独立全局代价地图配置 - [辅助避障版]
+# 独立全局代价地图配置 - [窄道稳定通行版]
+# 适用场景：机器人宽60cm，通道70-80cm，要求全局路径固定，避障交给局部规划
 
 global_frame: map
 robot_base_frame: base_link
 
-# 保持高频刷新，确保人一动绿线就动
-update_frequency: 10.0
-publish_frequency: 2.0
+# 1. 路径稳定性设置
+# 降低刷新频率，因为地图是静态的，高频刷新只会白白消耗 CPU
+update_frequency: 1.0
+publish_frequency: 1.0
 
+# 2. 地图基础设置
 static_map: true
 rolling_window: false
-resolution: 0.05
+# 提升分辨率到 0.025m (2.5cm)，确保在 70cm 通道内有足够的像素格子进行路径搜索
+resolution: 0.025
 
-robot_radius: 0.30
+# 3. 机器人足迹 (你提供的参数)
+# 注意：使用 footprint 后，系统会自动忽略 robot_radius
+footprint: [[-0.306, -0.290], [-0.306, 0.290], [0.306, 0.290], [0.306, -0.290]]
 
+# 4. 插件配置
+# 关键：移除了 obstacle_layer，这样全局路径就不会因为人走动而乱跳
 plugins:
   - {name: static_layer, type: "costmap_2d::StaticLayer"}
-  - {name: obstacle_layer, type: "costmap_2d::ObstacleLayer"}
   - {name: inflation_layer, type: "costmap_2d::InflationLayer"}
 
+# 静态层配置
 static_layer:
   map_topic: /map
   subscribe_to_updates: true
 
-# 障碍物层
-obstacle_layer:
-  observation_sources: scan
-  scan: 
-    topic: /scan
-    data_type: LaserScan
-    marking: true
-    clearing: true
-    max_obstacle_height: 2.0
-    min_obstacle_height: 0.0
-    obstacle_range: 3.0
-    raytrace_range: 4.0
-
-# 膨胀层
+# 膨胀层配置 (窄道通行的核心)
 inflation_layer:
-  # 保持较大的膨胀半径，迫使绿线弯曲
-  inflation_radius: 0.50
+  # 膨胀半径建议设为 0.35m - 0.40m 之间
+  # 机器人半宽 0.29m，如果设为 0.40m，意味着在 80cm 通道中心仍有微弱代价
+  # 这样可以强迫全局路径保持在通道的最中心行驶
+  inflation_radius: 1.2
   
-  # 衰减系数
-  cost_scaling_factor: 2.5
+  # 衰减系数调大（建议 10.0 - 15.0）
+  # 数值越大，边缘代价下降越快。这能让通道中心区域的代价尽可能低，
+  # 避免全局规划器因为“两边都是墙”而认为中间也不可通行。
+  cost_scaling_factor: 8.5
 
+# 坐标转换容忍度
 transform_tolerance: 1.0

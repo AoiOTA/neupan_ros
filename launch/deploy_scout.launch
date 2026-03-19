@@ -19,7 +19,7 @@
     
     <!-- ==================== 0. 全局参数 ==================== -->
     <arg name="port_name" default="can0"/>
-    <arg name="map_file" default="$(env HOME)/maps/office/office.yaml"/>
+    <arg name="map_file" default="$(env HOME)/maps/room/room.yaml"/>
     <arg name="map_frame" default="map"/>
     <arg name="odom_frame" default="odom"/>
     <arg name="base_frame" default="base_link"/>
