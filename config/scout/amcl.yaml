@@ -1,61 +1,69 @@
-# AMCL 配置 - 性能平衡版
+# AMCL 配置 - Scout Mini 滑移转向极端调优版
+# 优化目标：死死咬住地图，解决原地旋转时的定位发散问题
 
 # =========================================
-# 1. 滤波器参数
+# 1. 粒子滤波器核心参数
 # =========================================
-min_particles: 500            # 足够维持定位
-max_particles: 2000           # [修正] 5000 -> 2000。降低 CPU 负载，减少定位延迟。
+min_particles: 500            # 最小粒子数
+max_particles: 5000           # 最大粒子数，增加粒子数以应对高噪声环境
 kld_err: 0.05
 kld_z: 0.99
+
+# 更新频率极限调优 (防转弯发散)
+# 只要移动 0.1米 或 旋转约 2.8度 (0.05弧度)，就强制调用雷达纠正一次位姿
+update_min_d: 0.1
+update_min_a: 0.05            
+resample_interval: 1
+
+# =========================================
+# 2. ★ 运动模型调优 (破案核心) ★
+# =========================================
+# ⚠️ 必须使用 diff-corrected 这种严谨模型，否则高噪声参数无法生效
+odom_model_type: diff-corrected
+
+# 滑移转向 (Skid-Steer) 专用高噪声设置
+odom_alpha1: 0.8              # 旋转导致的旋转噪声 (rad/rad) - 应对极度打滑
+odom_alpha2: 0.2              # 平移导致的旋转噪声 (m/rad)
+odom_alpha3: 0.2              # 平移导致的平移噪声 (m/m)
+odom_alpha4: 0.5              # 旋转导致的平移噪声 (rad/m) - 应对侧滑
+odom_alpha5: 0.1              # 仅用于 omni 模型，diff 下可忽略
+
+# =========================================
+# 3. 激光模型参数 (增强雷达话语权)
+# =========================================
+laser_model_type: likelihood_field
+laser_max_beams: 60           # 减少波束参与计算，提升性能
+laser_max_range: 30.0         # 激光最大有效范围
+laser_z_hit: 0.95             # 提高匹配权重
+laser_z_rand: 0.05            # 降低随机噪声权重
+laser_sigma_hit: 0.1          # 严丝合缝的雷达匹配容差
+laser_likelihood_max_dist: 2.0
+
+# =========================================
+# 4. 绑架恢复与坐标系
+# =========================================
 recovery_alpha_slow: 0.001
 recovery_alpha_fast: 0.1
 
-# 更新频率
-update_min_d: 0.1
-update_min_a: 0.15
-resample_interval: 1
-
-tf_broadcast: true
-transform_tolerance: 1.0      # 保持较高的 TF 容忍度
-gui_publish_rate: 10.0
-save_pose_rate: 0.5
-
-# =========================================
-# 2. 激光雷达模型
-# =========================================
-laser_model_type: likelihood_field
-laser_likelihood_max_dist: 2.0
-laser_max_beams: 100
-laser_z_hit: 0.9
-laser_z_rand: 0.1
-laser_min_range: -1.0
-laser_max_range: -1.0
-
-# =========================================
-# 3. 里程计模型 (保持高噪声)
-# =========================================
-odom_model_type: diff-corrected
-
-# 滑移转向必须保持高噪声设置
-odom_alpha1: 0.25             # 旋转->旋转
-odom_alpha2: 0.25             # 平移->旋转
-odom_alpha3: 0.2              # 平移->平移
-odom_alpha4: 0.2              # 旋转->平移
-odom_alpha5: 0.1
-
-# =========================================
-# 4. 坐标系与初始位姿
-# =========================================
 odom_frame_id: odom
 base_frame_id: base_link
 global_frame_id: map
 
+# 允许 TF 时间戳有 0.5 秒的误差，防止 "Lookup into the future" 报错
+transform_tolerance: 0.5      
+tf_broadcast: true
+gui_publish_rate: 5.0
+save_pose_rate: 0.5
+
+# =========================================
+# 5. 初始位姿 (Initial Pose)
+# =========================================
 initial_pose_x: 0.0
 initial_pose_y: 0.0
-initial_pose_a: 0.0
-initial_cov_xx: 0.25
+initial_pose_a: 0.0           # 朝向角度，弧度制
+initial_cov_xx: 0.25          # 初始协方差：稍微给大一点点
 initial_cov_yy: 0.25
-initial_cov_aa: 0.07
+initial_cov_aa: 0.06          # 初始角度协方差
 
 use_map_topic: true
 first_map_only: false
