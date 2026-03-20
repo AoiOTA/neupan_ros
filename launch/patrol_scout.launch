@@ -1,0 +1,131 @@
+<?xml version="1.0"?>
+<launch>
+    <!--
+    ============================================================
+    Scout Mini + NeuPAN 多目标点巡航 Launch 文件
+    
+    [与 deploy_scout.launch 的关键区别]:
+      1. NeuPAN 的 /initial_path 不再重映射到 /global_planner/plan
+         而是保持原生 /initial_path，由 waypoint_patrol.py 直接注入
+      2. 额外启动 waypoint_patrol.py 巡航管家节点
+    ============================================================
+    -->
+    
+    <!-- ==================== 0. 全局参数 ==================== -->
+    <arg name="port_name" default="can0"/>
+    <arg name="map_file" default="$(env HOME)/maps/room/room.yaml"/>
+    <arg name="map_frame" default="map"/>
+    <arg name="odom_frame" default="odom"/>
+    <arg name="base_frame" default="base_link"/>
+    <arg name="lidar_frame" default="velodyne"/>
+    
+    <!-- NeuPAN 模型路径 -->
+    <arg name="neupan_config" default="$(find neupan_ros)/config/scout/neupan_planner_scout.yaml"/>
+    <arg name="dune_model" default="$(find neupan_ros)/model/custom/scout_dune.pth"/>
+
+    <!-- ==================== 1. 硬件驱动 ==================== -->
+    
+    <!-- 1.1 Scout Mini 底盘 -->
+    <include file="$(find scout_bringup)/launch/scout_mini_robot_base.launch">
+        <arg name="is_scout_mini" value="true"/>
+        <arg name="pub_tf" value="true"/>
+        <arg name="base_frame" value="base_footprint"/>
+    </include>
+
+    <!-- 1.2 Velodyne VLP-16 雷达 -->
+    <include file="$(find velodyne_pointcloud)/launch/VLP16_points.launch">
+        <arg name="device_ip" value="192.168.1.201"/>
+        <arg name="frame_id" value="$(arg lidar_frame)"/>
+        <arg name="port" value="2368"/>
+        <arg name="min_range" value="0.3"/>
+        <arg name="max_range" value="100.0"/>
+    </include>
+    
+    <!-- ==================== 2. TF 与 感知 ==================== -->
+    
+    <include file="$(find neupan_ros)/launch/scout_tf.launch"/>
+    
+    <include file="$(find neupan_ros)/launch/velodyne_to_scan.launch">
+        <arg name="manager" value="velodyne_nodelet_manager"/>
+        <arg name="target_frame" value="base_link"/>
+    </include>
+
+    <!-- ==================== 3. 地图与定位 ==================== -->
+    
+    <node pkg="map_server" type="map_server" name="map_server" args="$(arg map_file)">
+        <param name="frame_id" value="$(arg map_frame)"/>
+    </node>
+
+    <node pkg="amcl" type="amcl" name="amcl" output="screen">
+        <rosparam file="$(find neupan_ros)/config/scout/amcl.yaml" command="load"/>
+        <remap from="scan" to="/scan"/>
+        <param name="odom_frame_id" value="$(arg odom_frame)"/>
+        <param name="base_frame_id" value="$(arg base_frame)"/>
+        <param name="global_frame_id" value="$(arg map_frame)"/>
+        <param name="initial_pose_x" value="0.0"/>
+        <param name="initial_pose_y" value="0.0"/>
+        <param name="initial_pose_a" value="0.0"/>
+    </node>
+
+    <!-- ==================== 4. 全局规划器 (A* - 提供 make_plan 服务) ==================== -->
+    <node pkg="global_planner" type="planner" name="global_planner" output="screen">
+        <rosparam file="$(find neupan_ros)/config/scout/planner_a_star.yaml" command="load" ns="planner"/>
+        <rosparam file="$(find neupan_ros)/config/scout/costmap_global.yaml" command="load" ns="costmap"/>
+        
+        <!-- 保留 goal 重映射，以防需要手动测试 -->
+        <remap from="/global_planner/goal" to="/move_base_simple/goal"/>
+        <remap from="/global_planner/planner/plan" to="/global_planner/plan"/>
+        
+        <param name="costmap/global_frame" value="$(arg map_frame)"/>
+        <param name="costmap/robot_base_frame" value="$(arg base_frame)"/>
+    </node>
+
+    <!-- ==================== 5. NeuPAN 局部规划 (核心控制器) ==================== -->
+    <!--
+    [关键区别] /initial_path 保持原生，不重映射!
+    巡航管家 waypoint_patrol.py 直接向 /initial_path 发布缝合路径。
+    -->
+    <node name="neupan_node" pkg="neupan_ros" type="neupan_node.py" output="screen">
+        <param name="config_file" value="$(arg neupan_config)"/>
+        <param name="dune_checkpoint" value="$(arg dune_model)"/>
+        
+        <param name="map_frame" value="$(arg map_frame)"/>
+        <param name="base_frame" value="$(arg base_frame)"/>
+        <param name="lidar_frame" value="$(arg lidar_frame)"/>
+        
+        <param name="scan_range" value="0.4 10.0"/>
+        <param name="scan_angle_range" value="-3.14159 3.14159"/>
+        <param name="scan_downsample" value="4"/>
+        <param name="flip_angle" value="false"/>
+        
+        <param name="refresh_initial_path" value="true"/>
+        <param name="include_initial_path_direction" value="false"/>
+        
+        <param name="marker_size" value="0.05"/>
+        <param name="marker_z" value="0.3"/>
+        
+        <remap from="/scan" to="/scan"/>
+        <!-- [关键] /initial_path 不重映射，保持原生! -->
+        <remap from="/neupan_cmd_vel" to="/cmd_vel"/>
+    </node>
+
+    <!-- ==================== 6. 巡航管家 ==================== -->
+    <!--
+    使用 xterm 启动，确保终端可以接收键盘输入 (ENTER)。
+    如果没有安装 xterm，请先: sudo apt install xterm
+    -->
+    <node name="waypoint_patrol" pkg="neupan_ros" type="waypoint_patrol.py"
+          output="screen" launch-prefix="xterm -fa 'Monospace' -fs 12 -e">
+        <param name="map_frame" value="$(arg map_frame)"/>
+        <param name="base_frame" value="$(arg base_frame)"/>
+        <param name="plan_service" value="/global_planner/planner/make_plan"/>
+        <param name="arrival_debounce_k" value="15"/>
+        <param name="loop_patrol" value="true"/>
+        <param name="plan_tolerance" value="0.1"/>
+    </node>
+
+    <!-- ==================== 7. 可视化 ==================== -->
+    <node pkg="rviz" type="rviz" name="rviz_navigation"
+          args="-d $(find neupan_ros)/rviz/navigation.rviz" output="screen"/>
+
+</launch>
