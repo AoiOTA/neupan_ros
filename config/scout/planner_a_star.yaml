@@ -4,7 +4,7 @@
 # =========================================
 # 1. 算法结构 (黄金平滑组合)
 # =========================================
-use_dijkstra: false    # 坚持使用 A* 算法，节省 CPU 算力
+use_dijkstra: true    # 坚持使用 A* 算法，节省 CPU 算力
 use_quadratic: true    # 使用二次近似计算势能场，让拐角处的势能曲面更加圆润
 old_navfn_behavior: false
 
