@@ -53,3 +53,4 @@ CATKIN_IGNORE
 /test
 .vscode/c_cpp_properties.json
 .vscode/settings.json
+VLP16_to_Mid360_Migration_Plan.md
