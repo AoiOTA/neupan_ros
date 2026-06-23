@@ -30,6 +30,14 @@
     <arg name="enable_rqt"  default="true"/>
     <arg name="model_xacro" default="$(find scout_description)/urdf/scout_mini.urdf.xacro"/>
 
+    <!-- /scan 高度/距离裁剪 (也算标定的一部分, 现场可换值重启调) -->
+    <!-- min_height: 切片下沿(相对 base_link). 雷达零自检测时只受地面(z=-0.181)约束, 0.0=离地0.18m -->
+    <arg name="min_height" default="0.0"/>
+    <!-- max_height: 切片上沿. 离地高 = 值+0.181, 1.0=离地1.18m -->
+    <arg name="max_height" default="1.0"/>
+    <!-- range_min: 水平近距裁剪(相对 base_link 轴心). 0.3≈Scout Mini 半宽 -->
+    <arg name="range_min" default="0.3"/>
+
     <!-- ===== 1. 雷达驱动 (PointCloud2 输出, xfer_format=0) ===== -->
     <include file="$(find livox_ros_driver2)/launch_ROS1/msg_MID360s.launch">
         <arg name="xfer_format"  value="0"/>
@@ -65,16 +73,16 @@
               name="pointcloud_to_laserscan" respawn="true" output="screen">
             <remap from="cloud_in" to="/livox/lidar"/>
             <remap from="scan"     to="/scan"/>
-            <rosparam>
+            <rosparam subst_value="true">
                 target_frame: base_link
                 transform_tolerance: 0.1
-                min_height: 0.15
-                max_height: 1.0
+                min_height: $(arg min_height)
+                max_height: $(arg max_height)
                 angle_min: -3.14159265359
                 angle_max: 3.14159265359
                 angle_increment: 0.005
                 scan_time: 0.1
-                range_min: 0.3
+                range_min: $(arg range_min)
                 range_max: 100.0
                 use_inf: true
                 inf_epsilon: 1.0

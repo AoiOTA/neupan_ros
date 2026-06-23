@@ -39,6 +39,12 @@
     <arg name="enable_rviz"  default="true"/>
     <arg name="model_xacro"  default="$(find scout_description)/urdf/scout_mini.urdf.xacro"/>
 
+    <!-- /scan 高度/距离裁剪 (标定的一部分, 与 calib_lidar.launch 同一组值, 现场可换值重启) -->
+    <arg name="min_height" default="0.0"/>   <!-- 切片下沿(相对 base_link); 0.0=离地0.18m. 雷达零自检测时只受地面约束 -->
+    <arg name="max_height" default="1.0"/>   <!-- 切片上沿; 离地高=值+0.181 -->
+    <arg name="range_min"  default="0.3"/>   <!-- 水平近距裁剪(相对轴心); ≈Scout半宽 -->
+
+
     <!-- ===== 1. 底盘驱动 (odom -> base_footprint) ===== -->
     <group if="$(arg enable_base)">
         <include file="$(find scout_bringup)/launch/scout_mini_robot_base.launch">
@@ -89,16 +95,16 @@
           name="pointcloud_to_laserscan" respawn="true" output="screen">
         <remap from="cloud_in" to="/livox/lidar"/>
         <remap from="scan"     to="/scan"/>
-        <rosparam>
+        <rosparam subst_value="true">
             target_frame: base_link        # 投影到水平车身系 (输出 /scan 的 frame_id 也是 base_link)
             transform_tolerance: 0.05
-            min_height: 0.15               # 过滤地面与车体底部
-            max_height: 1.0                # 忽略天花板/高处悬挂
+            min_height: $(arg min_height)  # 切片下沿; 标定的一部分, 见 calibration/Calibration_Manual.md
+            max_height: $(arg max_height)  # 切片上沿
             angle_min: -3.14159265359
             angle_max:  3.14159265359
             angle_increment: 0.005         # ~0.29°, ~1256 点/圈
             scan_time: 0.1                 # 10Hz, 与 publish_freq 匹配
-            range_min: 0.3                 # 屏蔽车体自身结构
+            range_min: $(arg range_min)    # 水平近距裁剪
             range_max: 100.0
             use_inf: true
             inf_epsilon: 1.0

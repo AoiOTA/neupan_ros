@@ -129,10 +129,14 @@ roslaunch neupan_ros navigation.launch map_file:=/path/to/your_map.yaml
 | 参数 | 文件 | 说明 |
 |------|------|------|
 | NeuPAN 速度/加速度上限 | `config/scout/neupan_planner_scout.yaml` | 首测调小,稳了再放开 |
+| `min_height` (默认0.0) | `navigation.launch` (arg) | `/scan` 切片下沿,**标定的一部分**。可 `min_height:=-0.05` 现场换值。详见 [calibration/Calibration_Manual.md](../calibration/Calibration_Manual.md) §5.5 |
+| `max_height` (默认1.0) / `range_min` (默认0.3) | `navigation.launch` (arg) | 切片上沿 / 水平近距裁剪 |
 | `scan_downsample` (默认4) | `navigation.launch` | 点太密 CPU 高→加大;避障漏点→减小 |
 | `scan_range` (默认0.4 10.0) | `navigation.launch` | NeuPAN 考虑的障碍距离窗口 |
 | AMCL `odom_alpha1/4` | `config/scout/amcl.yaml` | 转弯定位发散→加大(滑移转向) |
 | A* / costmap 膨胀 | `planner_a_star.yaml` / `costmap_global.yaml` | 路径贴墙太近→加大膨胀半径 |
+
+> ⭐ `min_height`/`range_min` 是**交接物**:与 `calib_lidar.launch`、`mapping_test.launch` 保持同一组值(默认已统一 0.0 / 1.0 / 0.3)。
 
 ---
 

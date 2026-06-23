@@ -73,6 +73,11 @@ roslaunch neupan_ros mapping_test.launch
 | `enable_base:=false`  | 不启动底盘(无 CAN 时,配合 rosbag 回放 `/livox/lidar` + odom) |
 | `enable_model:=false` | 不显示车模型。**仅 `enable_base:=false` 时有意义**;带底盘时车模型由底盘 bringup 自动提供(强行再开会节点重名,本 launch 已做隔离) |
 | `enable_rviz:=false`  | 不自动开 RViz |
+| `min_height:=<m>` | `/scan` 切片下沿(默认 **0.0**)。**也算标定的一部分**,详见 [calibration/Calibration_Manual.md](../calibration/Calibration_Manual.md) §5.5 |
+| `max_height:=<m>` | `/scan` 切片上沿(默认 1.0) |
+| `range_min:=<m>` | 水平近距裁剪(默认 0.3,≈ Scout 半宽) |
+
+> ⭐ `min_height`/`range_min` 是**交接物**:在 `calib_lidar.launch` 标定时定下的值,要和本 launch、`navigation.launch` **保持同一组**(默认已统一为 0.0 / 1.0 / 0.3)。
 
 ---
 
