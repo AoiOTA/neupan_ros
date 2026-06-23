@@ -1,0 +1,158 @@
+<?xml version="1.0"?>
+<launch>
+    <!--
+    ============================================================
+    Livox Mid-360S 建图测试专用启动文件 (自包含, 独立, 不动现有 launch)
+
+    一条命令拉起整套建图链路:
+      1. 底盘 Scout Mini   : odom -> base_footprint (CAN, 提供里程计)
+      2. Livox Mid-360S    : /livox/lidar (3D PointCloud2)
+      3. 标定 TF           : footprint->base(z=0.181) + base->livox(标定外参)
+      4. 点云转 2D scan    : /livox/lidar -> /scan (投影到 base_link)
+      5. gmapping          : 滑移转向调优, 输出 /map + map->odom
+      6. RViz              : 地图 + scan + 车模型 实时可视化
+
+    [前置条件]
+      - 已用 calib_lidar.launch 标定好外参, 并把打印的 args 抄到下面第 3 节
+      - 网卡已切到雷达网段 (Lidar-Static), ping 通 192.168.1.182
+      - 底盘 CAN 已通 (can0)
+
+    [用法]
+        roslaunch neupan_ros mapping_test.launch
+      然后手推/遥控小车慢速走一圈建图, 详见 Mapping_Manual.md。
+
+    [开关]
+        enable_base:=false    不启动底盘 (用 rosbag 回放点云时)
+        enable_model:=false   不显示车模型 (仅 enable_base:=false 时有意义;
+                              带底盘时车模型由底盘 bringup 自动提供)
+        enable_rviz:=false    不自动开 RViz
+    ============================================================
+    -->
+
+    <!-- ===== 0. 全局参数 ===== -->
+    <arg name="map_frame"   default="map"/>
+    <arg name="odom_frame"  default="odom"/>
+    <arg name="base_frame"  default="base_link"/>
+    <arg name="lidar_frame" default="livox_frame"/>
+    <arg name="enable_base"  default="true"/>
+    <arg name="enable_model" default="true"/>
+    <arg name="enable_rviz"  default="true"/>
+    <arg name="model_xacro"  default="$(find scout_description)/urdf/scout_mini.urdf.xacro"/>
+
+    <!-- ===== 1. 底盘驱动 (odom -> base_footprint) ===== -->
+    <group if="$(arg enable_base)">
+        <include file="$(find scout_bringup)/launch/scout_mini_robot_base.launch">
+            <arg name="is_scout_mini" value="true"/>
+            <arg name="pub_tf"        value="true"/>
+            <!-- REP-105: 底盘里程计发布到 base_footprint -->
+            <arg name="base_frame"    value="base_footprint"/>
+        </include>
+    </group>
+
+    <!-- ===== 2. Livox Mid-360S 驱动 (PointCloud2 输出) ===== -->
+    <include file="$(find livox_ros_driver2)/launch_ROS1/msg_MID360s.launch">
+        <arg name="xfer_format"  value="0"/>   <!-- 关键: 0=PointCloud2, 默认1=CustomMsg 转不了 scan -->
+        <arg name="publish_freq" value="10.0"/>
+        <arg name="multi_topic"  value="0"/>
+        <arg name="msg_frame_id" value="$(arg lidar_frame)"/>
+    </include>
+
+    <!-- ===== 3. 标定 TF ===== -->
+    <!-- 3.1 footprint -> base (z=0.181 轮底切地, 固定值, 一般不动) -->
+    <node pkg="tf2_ros" type="static_transform_publisher" name="footprint_to_base"
+          args="0 0 0.181 0 0 0 base_footprint base_link"/>
+
+    <!-- 3.2 base -> livox  ★★★ 标定结果填这里 ★★★
+         把 calib_lidar.launch 标定后, lidar_calib_tf 终端打印的那串
+         args="x y z yaw pitch roll base_link livox_frame" 整段替换下面这行。
+         下面是 SolidWorks 理想初值 (x=0.09563 z=0.355, 其余0), 标定前先用着。
+         参数顺序: x y z yaw pitch roll parent child -->
+    <node pkg="tf2_ros" type="static_transform_publisher" name="base_to_livox"
+          args="0.09563 0 0.355 0 0 0 base_link $(arg lidar_frame)"/>
+
+    <!-- ===== 4. (可选) Scout Mini 车模型 =====
+         注意: enable_base=true 时, 车模型 (robot_description + robot_state_publisher +
+         joint_state_publisher) 已由底盘 bringup (scout_mini_robot_base.launch) 提供,
+         这里不能再起一份, 否则节点重名冲突。
+         故本组仅在 enable_base=false (如 rosbag 回放) 且 enable_model=true 时才补上车模型。 -->
+    <group unless="$(arg enable_base)">
+        <group if="$(arg enable_model)">
+            <param name="robot_description" command="$(find xacro)/xacro '$(arg model_xacro)'"/>
+            <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>
+            <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher"/>
+        </group>
+    </group>
+
+    <!-- ===== 5. 点云 3D -> 2D /scan (独立节点, 投影到 base_link) ===== -->
+    <!-- Livox 驱动是独立进程, 没有 velodyne 那种 nodelet manager, 故用独立 node 版 -->
+    <node pkg="pointcloud_to_laserscan" type="pointcloud_to_laserscan_node"
+          name="pointcloud_to_laserscan" respawn="true" output="screen">
+        <remap from="cloud_in" to="/livox/lidar"/>
+        <remap from="scan"     to="/scan"/>
+        <rosparam>
+            target_frame: base_link        # 投影到水平车身系 (输出 /scan 的 frame_id 也是 base_link)
+            transform_tolerance: 0.05
+            min_height: 0.15               # 过滤地面与车体底部
+            max_height: 1.0                # 忽略天花板/高处悬挂
+            angle_min: -3.14159265359
+            angle_max:  3.14159265359
+            angle_increment: 0.005         # ~0.29°, ~1256 点/圈
+            scan_time: 0.1                 # 10Hz, 与 publish_freq 匹配
+            range_min: 0.3                 # 屏蔽车体自身结构
+            range_max: 100.0
+            use_inf: true
+            inf_epsilon: 1.0
+            concurrency_level: 1           # 强制单线程回调; 省略则默认0=按CPU核数起多线程, 单路点云无收益且可能打乱scan时序
+        </rosparam>
+    </node>
+
+    <!-- ===== 6. SLAM: gmapping (滑移转向调优, 沿用 mapping_scout.launch 黄金参数) ===== -->
+    <node pkg="gmapping" type="slam_gmapping" name="slam_gmapping" output="screen">
+        <!-- 坐标系 -->
+        <param name="map_frame"  value="$(arg map_frame)"/>
+        <param name="odom_frame" value="$(arg odom_frame)"/>
+        <param name="base_frame" value="$(arg base_frame)"/>
+
+        <!-- 性能 -->
+        <param name="map_update_interval" value="3.0"/>
+
+        <!-- 激光距离 -->
+        <param name="maxUrange" value="20.0"/>   <!-- 室内建议 10-20m -->
+        <param name="maxRange"  value="100.0"/>
+
+        <!-- 运动更新阈值 -->
+        <param name="linearUpdate"   value="0.2"/>
+        <param name="angularUpdate"  value="0.2"/>
+        <param name="temporalUpdate" value="3.0"/>
+
+        <!-- 粒子滤波 / 地图范围 -->
+        <param name="particles" value="50"/>
+        <param name="xmin" value="-20.0"/>
+        <param name="ymin" value="-20.0"/>
+        <param name="xmax" value="20.0"/>
+        <param name="ymax" value="20.0"/>
+        <param name="delta" value="0.05"/>       <!-- 地图分辨率 5cm -->
+
+        <!-- 【滑移转向噪声模型】Scout Mini 转向靠打滑, 里程计旋转分量不准, 故加大 srr/str -->
+        <param name="srr" value="0.5"/>          <!-- 旋转->旋转, 重影变严重就继续加大 -->
+        <param name="srt" value="0.2"/>
+        <param name="str" value="0.3"/>          <!-- 平移->旋转 -->
+        <param name="stt" value="0.2"/>
+
+        <!-- 扫描匹配 -->
+        <param name="ogain" value="3.0"/>
+        <param name="lstep" value="0.05"/>
+        <param name="astep" value="0.05"/>
+        <param name="iterations" value="5"/>
+        <param name="lsigma" value="0.075"/>
+        <param name="kernelSize" value="1"/>
+        <param name="lskip" value="0"/>
+
+        <remap from="scan" to="/scan"/>
+    </node>
+
+    <!-- ===== 7. RViz (Fixed Frame=map, 地图+scan+车模型) ===== -->
+    <node if="$(arg enable_rviz)" pkg="rviz" type="rviz" name="rviz_mapping"
+          args="-d $(find neupan_ros)/mapping/mapping.rviz" output="screen"/>
+
+</launch>
