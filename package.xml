@@ -59,6 +59,10 @@
   <exec_depend>rospy</exec_depend>
   <exec_depend>std_msgs</exec_depend>
 
+  <!-- 标定动态调参 (calibration/lidar_calib_tf.py + calibration/LidarCalib.cfg) -->
+  <build_depend>dynamic_reconfigure</build_depend>
+  <exec_depend>dynamic_reconfigure</exec_depend>
+
 
   <!-- The export tag contains other, unspecified, tags -->
   <export>

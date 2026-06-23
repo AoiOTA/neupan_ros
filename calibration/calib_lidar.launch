@@ -1,0 +1,89 @@
+<?xml version="1.0"?>
+<launch>
+    <!--
+    ============================================================
+    Livox Mid-360S 标定专用启动文件 (独立, 不动 deploy/mapping/test)
+
+    功能:
+      1. 启动雷达驱动 (PointCloud2)
+      2. 加载 Scout Mini 车模型 (URDF), 方便目视对照
+      3. 启动动态可调 TF 节点 base_link->livox_frame
+      4. 打开 rqt_reconfigure 滑条 (拖动 x/y/z/roll/pitch/yaw, 点云实时跟着动)
+      5. 打开 RViz (车模型 + 3D 点云 + 2D scan + 地面网格)
+    不启动底盘/CAN/导航/NeuPAN。
+
+    [用法]
+        roslaunch neupan_ros calib_lidar.launch
+      然后在弹出的 rqt_reconfigure 里点选左侧 "lidar_calib_tf" 节点,
+      拖动滑条即可实时标定。调好后看该节点终端打印的 args, 抄进 scout_tf.launch。
+
+    [开关]
+        enable_scan:=false   只看 3D 点云, 不生成 /scan
+        enable_rviz:=false   不自动开 RViz
+        enable_rqt:=false    不自动开 rqt_reconfigure
+    ============================================================
+    -->
+
+    <arg name="lidar_frame" default="livox_frame"/>
+    <arg name="enable_scan" default="true"/>
+    <arg name="enable_rviz" default="true"/>
+    <arg name="enable_rqt"  default="true"/>
+    <arg name="model_xacro" default="$(find scout_description)/urdf/scout_mini.urdf.xacro"/>
+
+    <!-- ===== 1. 雷达驱动 (PointCloud2 输出, xfer_format=0) ===== -->
+    <include file="$(find livox_ros_driver2)/launch_ROS1/msg_MID360s.launch">
+        <arg name="xfer_format"  value="0"/>
+        <arg name="publish_freq" value="10.0"/>
+        <arg name="multi_topic"  value="0"/>
+        <arg name="msg_frame_id" value="$(arg lidar_frame)"/>
+    </include>
+
+    <!-- ===== 2. Scout Mini 车模型 ===== -->
+    <!-- 解析 URDF 到 /robot_description -->
+    <param name="robot_description" command="$(find xacro)/xacro '$(arg model_xacro)'"/>
+    <!-- 发布 URDF 内部 TF (base_link->轮子/挂架等) -->
+    <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>
+    <!-- 发布关节状态(轮子默认0), 否则模型不全/报错 -->
+    <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher"/>
+
+    <!-- ===== 3. 地面基准 TF: base_footprint -> base_link (z=0.181, 固定) ===== -->
+    <node pkg="tf2_ros" type="static_transform_publisher" name="calib_footprint_to_base"
+          args="0 0 0.181 0 0 0 base_footprint base_link"/>
+
+    <!-- ===== 4. 动态可调 TF: base_link -> livox_frame (滑条调节) ===== -->
+    <node pkg="neupan_ros" type="lidar_calib_tf.py" name="lidar_calib_tf" output="screen">
+        <param name="parent_frame" value="base_link"/>
+        <param name="child_frame"  value="$(arg lidar_frame)"/>
+    </node>
+
+    <!-- ===== 5. 滑条界面 rqt_reconfigure ===== -->
+    <node if="$(arg enable_rqt)" pkg="rqt_reconfigure" type="rqt_reconfigure" name="rqt_reconfigure"/>
+
+    <!-- ===== 6. (可选) 3D 点云 -> 2D /scan, 投影到 base_link ===== -->
+    <group if="$(arg enable_scan)">
+        <node pkg="pointcloud_to_laserscan" type="pointcloud_to_laserscan_node"
+              name="pointcloud_to_laserscan" respawn="true" output="screen">
+            <remap from="cloud_in" to="/livox/lidar"/>
+            <remap from="scan"     to="/scan"/>
+            <rosparam>
+                target_frame: base_link
+                transform_tolerance: 0.1
+                min_height: 0.15
+                max_height: 1.0
+                angle_min: -3.14159265359
+                angle_max: 3.14159265359
+                angle_increment: 0.005
+                scan_time: 0.1
+                range_min: 0.3
+                range_max: 100.0
+                use_inf: true
+                inf_epsilon: 1.0
+            </rosparam>
+        </node>
+    </group>
+
+    <!-- ===== 7. RViz (车模型 + 点云, Fixed Frame=base_footprint) ===== -->
+    <node if="$(arg enable_rviz)" pkg="rviz" type="rviz" name="rviz_calib"
+          args="-d $(find neupan_ros)/calibration/calib.rviz" output="screen"/>
+
+</launch>
