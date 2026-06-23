@@ -78,6 +78,7 @@
                 range_max: 100.0
                 use_inf: true
                 inf_epsilon: 1.0
+                concurrency_level: 1           # 强制单线程回调; 省略则默认0=按CPU核数起多线程
             </rosparam>
         </node>
     </group>
