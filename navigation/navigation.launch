@@ -1,0 +1,169 @@
+<?xml version="1.0"?>
+<launch>
+    <!--
+    ============================================================
+    Livox Mid-360S 自主导航测试 (自包含, 独立, 不动现有 launch)
+
+    一条命令拉起完整导航栈:
+      1. 底盘 Scout Mini   : odom -> base_footprint (CAN)
+      2. Livox Mid-360S    : /livox/lidar (3D PointCloud2)
+      3. 标定 TF           : footprint->base(z=0.181) + base->livox(标定外参)
+      4. 点云转 2D scan    : /livox/lidar -> /scan (投影到 base_link)
+      5. 地图 + 定位       : map_server 加载地图 + AMCL
+      6. 全局规划          : global_planner (A*) -> /global_planner/plan
+      7. 局部规划/控制     : NeuPAN (MPC/DUNE) -> /cmd_vel  [仅完整导航时启动]
+      8. RViz              : 地图 + 粒子云 + scan + 全局路径 + NeuPAN 标记
+
+    [架构] RViz(2D Nav Goal) -> global_planner -> /global_planner/plan
+                             -> NeuPAN -> /cmd_vel -> Scout Base
+
+    ⚠️ 完整导航会真实驱动小车! 务必先看手册 §3 安全须知。
+
+    [两步走 — 详见 Navigation_Manual.md]
+      第一步 (只定位, 不动):
+        roslaunch neupan_ros navigation.launch localization_only:=true
+        用 RViz "2D Pose Estimate" 给初始位姿, 推车看粒子云收敛。
+      第二步 (完整自主导航, 会动):
+        roslaunch neupan_ros navigation.launch
+        用 RViz "2D Nav Goal" 下发目标, NeuPAN 驱动小车避障到点。
+
+    [关键参数]
+        map_file:=/path/to/your_map.yaml   指定要用的地图 (默认 ~/maps/room/room.yaml)
+        localization_only:=true            只跑定位, 不起 global_planner / NeuPAN
+        enable_base:=false                 不启动底盘 (无 CAN 时, 需外部提供 odom->base_footprint, 如 rosbag)
+        enable_rviz:=false                 不自动开 RViz
+    ============================================================
+    -->
+
+    <!-- ===== 0. 全局参数 ===== -->
+    <arg name="map_file"    default="$(env HOME)/maps/room/room.yaml"/>
+    <arg name="map_frame"   default="map"/>
+    <arg name="odom_frame"  default="odom"/>
+    <arg name="base_frame"  default="base_link"/>
+    <arg name="lidar_frame" default="livox_frame"/>
+    <arg name="localization_only" default="false"/>
+    <arg name="enable_base" default="true"/>
+    <arg name="enable_rviz" default="true"/>
+
+    <!-- NeuPAN 模型/配置 -->
+    <arg name="neupan_config" default="$(find neupan_ros)/config/scout/neupan_planner_scout.yaml"/>
+    <arg name="dune_model"    default="$(find neupan_ros)/model/custom/scout_dune.pth"/>
+
+    <!-- ===== 1. 底盘驱动 (odom -> base_footprint) =====
+         enable_base:=false 时跳过 (无 CAN 的台架/rosbag 测试), 此时需外部提供 odom->base_footprint -->
+    <group if="$(arg enable_base)">
+        <include file="$(find scout_bringup)/launch/scout_mini_robot_base.launch">
+            <arg name="is_scout_mini" value="true"/>
+            <arg name="pub_tf"        value="true"/>
+            <arg name="base_frame"    value="base_footprint"/>
+        </include>
+    </group>
+
+    <!-- ===== 2. Livox Mid-360S 驱动 (PointCloud2 输出) ===== -->
+    <include file="$(find livox_ros_driver2)/launch_ROS1/msg_MID360s.launch">
+        <arg name="xfer_format"  value="0"/>   <!-- 0=PointCloud2, 默认1=CustomMsg 转不了 scan -->
+        <arg name="publish_freq" value="10.0"/>
+        <arg name="multi_topic"  value="0"/>
+        <arg name="msg_frame_id" value="$(arg lidar_frame)"/>
+    </include>
+
+    <!-- ===== 3. 标定 TF ===== -->
+    <!-- 3.1 footprint -> base (z=0.181 轮底切地, 固定值) -->
+    <node pkg="tf2_ros" type="static_transform_publisher" name="footprint_to_base"
+          args="0 0 0.181 0 0 0 base_footprint base_link"/>
+
+    <!-- 3.2 base -> livox  ★★★ 标定结果填这里 ★★★
+         把 calib_lidar.launch 标定后打印的 args="x y z yaw pitch roll base_link livox_frame"
+         整段替换下面这行 (与 mapping_test.launch 用同一串)。当前为 SolidWorks 理想初值。 -->
+    <node pkg="tf2_ros" type="static_transform_publisher" name="base_to_livox"
+          args="0.09563 0 0.355 0 0 0 base_link $(arg lidar_frame)"/>
+
+    <!-- ===== 4. 点云 3D -> 2D /scan (独立节点, 投影到 base_link) ===== -->
+    <node pkg="pointcloud_to_laserscan" type="pointcloud_to_laserscan_node"
+          name="pointcloud_to_laserscan" respawn="true" output="screen">
+        <remap from="cloud_in" to="/livox/lidar"/>
+        <remap from="scan"     to="/scan"/>
+        <rosparam>
+            target_frame: base_link
+            transform_tolerance: 0.05
+            min_height: 0.15
+            max_height: 1.0
+            angle_min: -3.14159265359
+            angle_max:  3.14159265359
+            angle_increment: 0.005
+            scan_time: 0.1
+            range_min: 0.3
+            range_max: 100.0
+            use_inf: true
+            inf_epsilon: 1.0
+            concurrency_level: 1           # 强制单线程回调, 避免 scan 时序错乱
+        </rosparam>
+    </node>
+
+    <!-- ===== 5. 地图服务器 ===== -->
+    <node pkg="map_server" type="map_server" name="map_server" args="$(arg map_file)">
+        <param name="frame_id" value="$(arg map_frame)"/>
+    </node>
+
+    <!-- ===== 6. AMCL 定位 (沿用 config/scout/amcl.yaml 滑移转向调优) ===== -->
+    <node pkg="amcl" type="amcl" name="amcl" output="screen">
+        <rosparam file="$(find neupan_ros)/config/scout/amcl.yaml" command="load"/>
+        <remap from="scan" to="/scan"/>
+        <param name="odom_frame_id"  value="$(arg odom_frame)"/>
+        <param name="base_frame_id"  value="$(arg base_frame)"/>
+        <param name="global_frame_id" value="$(arg map_frame)"/>
+        <!-- 初始位姿默认原点, 启动后用 RViz "2D Pose Estimate" 修正 -->
+        <param name="initial_pose_x" value="0.0"/>
+        <param name="initial_pose_y" value="0.0"/>
+        <param name="initial_pose_a" value="0.0"/>
+    </node>
+
+    <!-- ===== 7. 全局规划 + NeuPAN 局部规划 (仅完整导航时启动) ===== -->
+    <!-- localization_only:=true 时整组跳过 -> 只定位、不规划、不发 /cmd_vel、小车不动 -->
+    <group unless="$(arg localization_only)">
+
+        <!-- 7.1 全局规划器 A* -->
+        <node pkg="global_planner" type="planner" name="global_planner" output="screen">
+            <rosparam file="$(find neupan_ros)/config/scout/planner_a_star.yaml" command="load" ns="planner"/>
+            <rosparam file="$(find neupan_ros)/config/scout/costmap_global.yaml" command="load" ns="costmap"/>
+            <!-- 绝对路径重映射: 接 RViz 目标点; 输出路径供 NeuPAN 订阅 -->
+            <remap from="/global_planner/goal" to="/move_base_simple/goal"/>
+            <remap from="/global_planner/planner/plan" to="/global_planner/plan"/>
+            <param name="costmap/global_frame"     value="$(arg map_frame)"/>
+            <param name="costmap/robot_base_frame" value="$(arg base_frame)"/>
+        </node>
+
+        <!-- 7.2 NeuPAN MPC/DUNE 局部规划/控制 -->
+        <node name="neupan_node" pkg="neupan_ros" type="neupan_node.py" output="screen">
+            <param name="config_file"     value="$(arg neupan_config)"/>
+            <param name="dune_checkpoint" value="$(arg dune_model)"/>
+
+            <param name="map_frame"  value="$(arg map_frame)"/>
+            <param name="base_frame" value="$(arg base_frame)"/>
+            <!-- 方案A: /scan 已被投影到 base_link, lidar_frame 必须=base_link, -->
+            <!-- 否则 neupan_core 会重复应用安装外参, 障碍点朝前偏 ~9.6cm -->
+            <param name="lidar_frame" value="base_link"/>
+
+            <param name="scan_range"        value="0.4 10.0"/>
+            <param name="scan_angle_range"  value="-3.14159 3.14159"/>
+            <param name="scan_downsample"   value="4"/>
+            <param name="flip_angle"        value="false"/>
+
+            <param name="refresh_initial_path"            value="true"/>
+            <param name="include_initial_path_direction"  value="false"/>
+
+            <param name="marker_size" value="0.05"/>
+            <param name="marker_z"    value="0.3"/>
+
+            <remap from="/scan"          to="/scan"/>
+            <remap from="/initial_path"  to="/global_planner/plan"/>
+            <remap from="/neupan_cmd_vel" to="/cmd_vel"/>
+        </node>
+
+    </group>
+
+    <!-- ===== 8. RViz ===== -->
+    <node if="$(arg enable_rviz)" pkg="rviz" type="rviz" name="rviz_navigation"
+          args="-d $(find neupan_ros)/navigation/navigation.rviz" output="screen"/>
+
+</launch>
