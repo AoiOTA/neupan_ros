@@ -73,7 +73,12 @@
     </include>
 
     <!-- ===== 3. 标定 TF ===== -->
-    <!-- 3.1 footprint -> base (z=0.181 轮底切地, 固定值) -->
+    <!-- 3.1 base_footprint -> base_link (z=0.181 轮底切地, 固定值)
+         ★ 勿删, 也别想着「直接 odom->base_link」: 底盘驱动是纯 2D 里程计, 它发的 odom TF
+           translation.z 被写死成 0 (scout_messenger.cpp:306), 直接子帧必被钉在地面(z=0)。
+           而 base_link 在车轴心(离地 0.181), 不能直接挂 odom。故必须
+             odom -> base_footprint(地面 z=0) -> base_link(轴心 z=0.181)
+           这一条 static 就是把 base_link 从地面抬到轴心高度的那 0.181, 物理正确, 缺它整车低 0.181。 -->
     <node pkg="tf2_ros" type="static_transform_publisher" name="footprint_to_base"
           args="0 0 0.181 0 0 0 base_footprint base_link"/>
 
