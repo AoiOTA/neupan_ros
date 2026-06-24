@@ -105,7 +105,7 @@
             angle_increment: 0.005         # ~0.29°, ~1256 点/圈
             scan_time: 0.1                 # 10Hz, 与 publish_freq 匹配
             range_min: $(arg range_min)    # 水平近距裁剪
-            range_max: 100.0
+            range_max: 40.0                # Mid-360 有效量程 ~40m, 写实截断 (原100 无害)
             use_inf: true
             inf_epsilon: 1.0
             concurrency_level: 1           # 强制单线程回调; 省略则默认0=按CPU核数起多线程, 单路点云无收益且可能打乱scan时序
@@ -123,8 +123,8 @@
         <param name="map_update_interval" value="3.0"/>
 
         <!-- 激光距离 -->
-        <param name="maxUrange" value="20.0"/>   <!-- 室内建议 10-20m -->
-        <param name="maxRange"  value="100.0"/>
+        <param name="maxUrange" value="20.0"/>   <!-- 室内建议 10-20m; 用于扫描匹配的可信距离 -->
+        <param name="maxRange"  value="40.0"/>   <!-- Mid-360 物理量程 ~40m; 须 >= maxUrange -->
 
         <!-- 运动更新阈值 -->
         <param name="linearUpdate"   value="0.2"/>

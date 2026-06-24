@@ -98,7 +98,7 @@
             angle_increment: 0.005
             scan_time: 0.1
             range_min: $(arg range_min)    # 水平近距裁剪
-            range_max: 100.0
+            range_max: 40.0                # Mid-360 有效量程 ~40m, 写实截断 (原100 无害)
             use_inf: true
             inf_epsilon: 1.0
             concurrency_level: 1           # 强制单线程回调, 避免 scan 时序错乱
